@@ -5,7 +5,7 @@
 // worklets を exclude しているが、依存として import するぶんは型チェックを通る（純データのため）。
 // 環境固有 global（DOM / audioworklet）は一切使わないこと。
 
-export type ParamSection = 'drive' | 'howl' | 'pitch' | 'glitch' | 'band' | 'master'
+export type ParamSection = 'drive' | 'pitch' | 'glitch' | 'band' | 'master'
 
 export interface ParamDef {
   /** VST controller の addParameter tag（useParam の id）。本プラグインは 200番台。 */
@@ -52,17 +52,6 @@ export const PARAMS: ParamDef[] = [
     section: 'drive',
   },
   {
-    id: 205,
-    name: 'autoGain',
-    label: 'Auto Gain',
-    min: 0,
-    max: 1,
-    default: 1,
-    unit: '',
-    section: 'drive',
-    toggle: true,
-  },
-  {
     id: 206,
     name: 'satOn',
     label: 'Drive On',
@@ -73,26 +62,17 @@ export const PARAMS: ParamDef[] = [
     section: 'drive',
     toggle: true,
   },
-  // --- Howl（入力依存ウェーブフォルダー：倍音エキサイター・1ノブ） ---
+  // Comp: ON=自然圧縮（操作点追従＝遅い envelope。普通の歪み）/ OFF=ダイナミクス保持（速い envelope）。
+  // ID 222（221 は反映されなかった実験の名残のため欠番）。
   {
-    id: 218,
-    name: 'howl',
-    label: 'Howl',
-    min: 0,
-    max: 100,
-    default: 0,
-    unit: '%',
-    section: 'howl',
-  },
-  {
-    id: 220,
-    name: 'howlOn',
-    label: 'Howl On',
+    id: 222,
+    name: 'comp',
+    label: 'Comp',
     min: 0,
     max: 1,
     default: 1,
     unit: '',
-    section: 'howl',
+    section: 'drive',
     toggle: true,
   },
   // --- ピッチ（Wobble） ---

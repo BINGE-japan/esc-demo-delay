@@ -3,7 +3,7 @@
 > ファイル/モジュール構成・信号フロー・SDK 連携・パラメータ橋渡しを定義する。
 > 配線を変えたら **先にここを直し**、[DECISIONS.md](./DECISIONS.md) に理由を追記してから実装する。
 >
-> ステータス: **v0.3** / 最終更新: 2026-06-20
+> ステータス: **v0.3** / 最終更新: 2026-06-21
 
 ## 1. 全体像
 
@@ -14,19 +14,18 @@ SDK の詳細は [src/sdk/index.ts](../src/sdk/index.ts) 参照。本書は **�
 
 DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.md](./DSP.md) §1/§6）。
 
-| パス                                                                            | 役割                                                         | 触る頻度 |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------- |
-| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し         | 高       |
-| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）             | 高       |
-| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード） | 高       |
-| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                  | 中       |
-| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup→Tone＋音量補正）                     | 中       |
-| [src/audio/worklets/dsp/loudness.ts](../src/audio/worklets/dsp/loudness.ts)     | 遅い自動トリム（ラウドネスマッチ）                           | 中       |
-| [src/audio/worklets/dsp/howl.ts](../src/audio/worklets/dsp/howl.ts)             | ハウリング倍音（フィードバック・レゾネーター）               | 中       |
-| [src/audio/worklets/dsp/wobble.ts](../src/audio/worklets/dsp/wobble.ts)         | ピッチのヨレ（可変ディレイ＋ランダム LFO）                   | 中       |
-| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | 再現性グリッチ（シード付き）                                 | 中       |
-| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）              | 低       |
-| `docs/`                                                                         | 仕様の SSoT                                                  | 高       |
+| パス                                                                            | 役割                                                               | 触る頻度 |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------- |
+| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し               | 高       |
+| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                   | 高       |
+| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）       | 高       |
+| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                        | 中       |
+| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結** | 中       |
+| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用 | 中       |
+| [src/audio/worklets/dsp/wobble.ts](../src/audio/worklets/dsp/wobble.ts)         | ピッチのヨレ（可変ディレイ＋ランダム LFO）                         | 中       |
+| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | 再現性グリッチ（シード付き）                                       | 中       |
+| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                    | 低       |
+| `docs/`                                                                         | 仕様の SSoT                                                        | 高       |
 
 - 各 DSP ユニットは `class`＋`constructor(sampleRate)`。音作りの定数は**ユニット冒頭**に集約。
 - `distortion.ts` は入力を dry に退避し、各ユニットを順に呼び、セクション ON/OFF・Bypass を**クロスフェード**で合成（[DSP.md](./DSP.md) §1）。
@@ -63,8 +62,8 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 ```
 
 - **採用**: AudioWorklet ネイティブ **AudioParam**（k-rate）。Web=ノブ / VST=automation を `useParam.value` が同じ reactive 値に正規化済みなので watch→AudioParam で両 runtime 共通。
-- トグル（Auto Gain / 各 ON / Bypass）も 0/1 の AudioParam。worklet 側でクロスフェード平滑（クリック回避）。
-- 音量の計算補正（Drive/Tone makeup）と遅い自動トリムは worklet 内で完結（パラメータは Auto Gain トグルのみ）。
+- トグル（各 ON / Solo / Mute / Bypass）も 0/1 の AudioParam。worklet 側でクロスフェード平滑（クリック回避）。
+- 音量の計算補正（Drive/Tone makeup）は worklet 内で完結＝ノブ値から算出する純フィードフォワード（専用パラメータなし。リアクティブな自動トリムは撤去、[DECISIONS.md](./DECISIONS.md) 2026-06-21）。
 - **bpm は例外的に transport 駆動**: hidden param（UI/useParam なし）。App が `watch(transport.state.tempo)` → `applyParam('bpm', tempo)`。Wobble の Occur が BPM グリッドで再現性を持つために worklet へ供給する。
 - OS（Phase 3）だけは構造的なので AudioParam でなく `processorOptions`＋グラフ再構築。
 
@@ -72,9 +71,10 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 
 - `useParam(id, opts)` の `id` は VST controller の `addParameter` tag と一致必須（[param.ts](../src/sdk/param.ts) 冒頭）。
 - 既存: synth `0..5` / saturator `100..102`。本プラグインは **200番台**:
-  - 連続: Drive=200, Tone=201, Output=202, Wobble(Depth)=203, Glitch=204, Wob Speed=210, Wob Occur=211, Band Lo=213(log), Band Hi=214(log), Howl=218（219=Howl Freq は廃止）
-  - トグル: Auto Gain=205, Drive On=206, Pitch On=207, Bypass=208, Spectral Fill=212, Solo=215, Mute=216, Glitch On=217, Howl On=220
+  - 連続: Drive=200, Tone=201, Output=202, Wobble(Depth)=203, Glitch=204, Wob Speed=210, Wob Occur=211, Band Lo=213(log), Band Hi=214(log)
+  - トグル: Drive On=206, Comp=222, Pitch On=207, Bypass=208, Spectral Fill=212, Solo=215, Mute=216, Glitch On=217
   - 内部: bpm=209（UI/useParam なし。`hidden:true`。App が `transport.tempo` を流し込む → Wob Occur の BPM 準拠）
+  - 廃止/欠番: 205＝旧 Auto Gain（リアクティブ自動トリム撤去、2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝反映されなかった実験の名残。再利用しない（VST tag 衝突回避）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。
 
 ## 6. runtime 差分の扱い

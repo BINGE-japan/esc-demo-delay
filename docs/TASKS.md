@@ -3,7 +3,7 @@
 > フェーズ単位の進行管理。着手前に該当フェーズの仕様（[SPEC.md](./SPEC.md) / [DSP.md](./DSP.md) / [ARCHITECTURE.md](./ARCHITECTURE.md)）を読む。
 > 完了したらチェックを付け、仕様変更が出たら [DECISIONS.md](./DECISIONS.md) に追記してから進む。
 >
-> 最終更新: 2026-06-20
+> 最終更新: 2026-06-21
 
 ## 凡例
 
@@ -53,7 +53,7 @@
 
 - [x] DSP をユニット分割（`dsp/saturation.ts` / `loudness.ts` / `wobble.ts` / `glitch.ts`）、`distortion.ts` は組み立て役
 - [x] パラメータ定義を `params.ts` に SSoT 化（worklet descriptors / App useParam・UI が派生）
-- [x] 音量恒常: Drive makeup ＋ **Tone makeup（新規）** ＋ 遅い自動トリム（Loudness Match, Auto Gain トグル）
+- [x] 音量恒常: Drive makeup ＋ **Tone makeup（新規）** ＋ 遅い自動トリム（Loudness Match, Auto Gain トグル） ※後に**自動トリム/Auto Gain は撤去**し純フィードフォワード化（Phase 2.10）
 - [x] セクション分離（歪み / ピッチ&グリッチ / マスター）を DSP・UI 両方で
 - [x] バイパス: 全体(208) ＋ セクション個別(206/207)、クロスフェードでクリック回避
 - [x] App.vue を params.ts 駆動・セクション UI に刷新
@@ -82,23 +82,28 @@
 - [x] `vp check` / `vp build` 通過
 - [~] 試聴で帯域の切れ・Solo/Mute・帯域内外の Wet/Dry を確認、フィルタ急峻さと量感を調整（**要試聴**）
 
-## Phase 2.9 — Howl（ハウリング倍音）（実装済・要試聴）
+## Phase 2.9 — Howl（ハウリング倍音）【廃止】
 
-> ユーザー要望（[DECISIONS.md](./DECISIONS.md) 2026-06-20）。DSP強化の第1弾。
+> **このセクションは削除**（2026-06-21）。金属味付加を数案試したが狙いに届かず撤去（[DECISIONS.md](./DECISIONS.md) 2026-06-21）。試行は git 履歴に残る。やり直す場合は別アルゴリズムで新規に起こす。
 
-- [x] `dsp/howl.ts`：**入力依存ウェーブフォルダー**（`sin(g·x)` 折り返し・1ノブ・無状態）
-  - 是正経緯: 初版=自己発振ドローン → 共鳴サチュ → どちらも「固定 Freq でキャラ固定」とユーザー指摘 → 共鳴系を廃し非線形シェイピング（wavefolder）へ（[DECISIONS.md](./DECISIONS.md) 2026-06-20）
-- [x] パラメータ Howl(218)/Howl On(220)、Howl Freq(219) は廃止（1ノブ化）
-- [x] **音量一定化**: Howl を Loudness Match の**前段**へ（Drive+Howl をまとめて dry に揃える＝バイパスで音量不変）
-- [x] **金属音へ（暫定）**: wavefolder（＝歪み/fizz でNG）→ **リングモジュレーター**（`x·(1−amt+amt·sin(2π·fc·t))`, `fc=lerp(150,1800,amt)`, 1ノブ）
-- [x] **配置を歪みの前へ**: `Howl→Drive` 順に（金属音を作ってから歪ませる＝ファズが食いつく。後ろだと密でゴチャつく）
-- [x] **キンキン化＋加算ブレンド**: `x·(1+dyn·c)`（dry 常時保持＝金属ブレンド量、べったり回避）。fc は最終 700–3500Hz
-- [x] **歪み成分のみ RM（ユーザー案）**: 基音クリーン・歪みのザリだけ金属化。Drive0→金属0
-- [x] **原音で自己mod＋加算（fc廃止）**: `out = driveOut + amt·GAIN·HPF((driveOut−dry)·sign(dry))`。外部キャリアをやめ原音ピッチでmod＝「元の音を誇張」した調和金属。置換→加算。HPF でキンキン＋DC除去
-  - 痩せ修正: キャリア `dry`→`sign(dry)`（単位方形波）ではっきり鳴るように（[DECISIONS.md](./DECISIONS.md) 2026-06-21）
+- [x] ~~`dsp/howl.ts`（ウェーブフォルダー → 外部キャリア RM → 原音自己 RM → 奇数倍音エキサイター を順に試行）~~ → **削除**
+- [x] ~~パラメータ Howl(218)/Howl On(220)~~ → **削除**（ID 218/219/220 は再利用しない）
+- [x] 副産物として残した改善: **Loudness Match を知覚重み付きに**（Drive の明るさ増分も音量として勘定＝Drive 単体の音量恒常が向上。[DECISIONS.md](./DECISIONS.md) 2026-06-21）
+- [x] `vp check` / `vp build` 通過（Howl 削除後）
+
+## Phase 2.10 — 音量恒常を純フィードフォワード化（実装済・要試聴）
+
+> ユーザー指摘「下げるまでの間（後追いラグ）が気持ち悪い／音量にムラ。**アルゴリズム（Drive/Tone）から上がる分を計算して下げる**シンプル堅牢な実装に。音を出してから計測しない」。方式＝**純フィードフォワード**（リアクティブ撤去。[DECISIONS.md](./DECISIONS.md) 2026-06-21）。
+
+- [x] 知覚重み付けを `dsp/weighting.ts` に切り出し（Drive 知覚 makeup 表の構築に使用）
+- [x] **静的「知覚 Drive makeup」**（`dsp/saturation.ts`）: 起動時に基準正弦を clip→重み付けして表化、`makeup=driveMakeup·table`＝RMS＋明るさ増をノブ値から**即時**補正
+- [x] ~~緩急 ballistics~~ → ~~遅く滑らかなトリム~~ → **リアクティブな Loudness Match と Auto Gain(205) を撤去**。`dsp/loudness.ts` 削除。出力を測る段をなくし純フィードフォワードだけに（ラグ/ムラ/ポンプが原理的に出ない）
+- [x] look-ahead は SDK のレイテンシ非申告のため不採用（VST タイミングずれ）
+- [x] **入力レベル連動 makeup**（`dsp/saturation.ts`）: ノブだけだと「フルスケール前提」較正で入力が小さいと Drive がただのゲイン化＝補正が追いつかない指摘を是正。入力ピーク envelope `a` を見て**実効ドライブ Geff=a·driveLin** で評価＝クリップ前は `1/driveLin`（ゲイン相殺）。Drive 操作に遅延ゼロ・出力非測定（[DECISIONS.md](./DECISIONS.md) 2026-06-21）
+- [x] **Comp(222) トグル**: 「ダイナミクス保持のまま歪む」指摘→保持/圧縮を切替。差は入力 envelope の速さのみ（ON=遅い250/400ms＝自然圧縮・既定 / OFF=速い5/150ms＝保持）。makeup 式共通・音量恒常維持（[DECISIONS.md](./DECISIONS.md) 2026-06-21）
+- [x] **Comp ON レベル補償**: 「Comp OFF が ~5dB 大きい」指摘→ Comp ON に一律トリム（最大 `COMP_TRIM_DB`≈5dB・クリップ量 Geff でゲート＝低 Drive 中立）。簡易近似・耳調整（[DECISIONS.md](./DECISIONS.md) 2026-06-21）
 - [x] `vp check` / `vp build` 通過
-- [ ] **本命の Howl キャラを確定**（自己mod は暫定。試聴で詰める）
-- [~] 試聴で「上げたら金属が出る／元の音を誇張／べったりでない」を確認、GAIN/HP を調整（**要試聴**）
+- [~] 試聴: **Comp ON** で素材のダイナミクスレンジが圧縮（サステインのレベル感は一定）/ **Comp OFF** で保持、を A/B。Drive スイープで両モード音量一定。圧縮量は Drive・`ENV_*_SLOW_MS` で調整（**要試聴**）
 
 ### 次の DSP 強化（予定）
 
