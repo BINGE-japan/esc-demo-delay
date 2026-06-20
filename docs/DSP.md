@@ -15,22 +15,23 @@
 
 ## 1. セクションと段構成
 
-5 セクション（Drive / Pitch / Glitch / Band / Master）。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
+6 セクション（Drive / Howl / Pitch / Glitch / Band / Master）。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
 全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo/Mute)`（§2b）。実処理順は上から下。
 
-| セクション | 段              | 内容                                                    | パラメータ                                               | ユニット            |
-| ---------- | --------------- | ------------------------------------------------------- | -------------------------------------------------------- | ------------------- |
-| **歪み**   | Drive           | `x *= 10^(driveDb/20)`                                  | Drive(200)                                               | `dsp/saturation.ts` |
-| 歪み       | Hard Clip       | `clamp(x, -1, +1)`                                      | —                                                        | 〃                  |
-| 歪み       | Drive makeup    | Drive で増えた RMS を静的に打ち消す                     | Drive 連動                                               | 〃                  |
-| 歪み       | Tone（Tilt EQ） | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup            | Tone(201)                                                | 〃                  |
-| 歪み       | Loudness Match  | dry に合わせる遅い自動トリム（残差を埋める）            | Auto Gain(205)                                           | `dsp/loudness.ts`   |
-| **Pitch**  | Wobble          | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）         | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207) | `dsp/wobble.ts`     |
-| **Glitch** | Glitch          | 再現性グリッチ（リピート/ゲート）＋スペクトル反転フィル | Glitch(204)/Spectral Fill(212)/Glitch On(217)            | `dsp/glitch.ts`     |
-| **Master** | Output Gain     | `y *= 10^(outDb/20)`                                    | Output(202)                                              | `distortion.ts`     |
-| Master     | Bypass          | 全体を dry へクロスフェード                             | Bypass(208)                                              | 〃                  |
+| セクション | 段              | 内容                                                                                | パラメータ                                               | ユニット            |
+| ---------- | --------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------- |
+| **歪み**   | Drive           | `x *= 10^(driveDb/20)`                                                              | Drive(200)                                               | `dsp/saturation.ts` |
+| 歪み       | Hard Clip       | `clamp(x, -1, +1)`                                                                  | —                                                        | 〃                  |
+| 歪み       | Drive makeup    | Drive で増えた RMS を静的に打ち消す                                                 | Drive 連動                                               | 〃                  |
+| 歪み       | Tone（Tilt EQ） | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                        | Tone(201)                                                | 〃                  |
+| **Howl**   | 自己リングmod   | 歪み成分(driveOut−dry)を**sign(dry)でmod**＋HPF＝原音を誇張した金属味を加算（暫定） | Howl(218)/Howl On(220)                                   | `dsp/howl.ts`       |
+| Howl/歪み  | Loudness Match  | **Drive+Howl を dry に合わせる**（音量一定。残差トリム）                            | Auto Gain(205)                                           | `dsp/loudness.ts`   |
+| **Pitch**  | Wobble          | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）                                     | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207) | `dsp/wobble.ts`     |
+| **Glitch** | Glitch          | 再現性グリッチ（リピート/ゲート）＋スペクトル反転フィル                             | Glitch(204)/Spectral Fill(212)/Glitch On(217)            | `dsp/glitch.ts`     |
+| **Master** | Output Gain     | `y *= 10^(outDb/20)`                                                                | Output(202)                                              | `distortion.ts`     |
+| Master     | Bypass          | 全体を dry へクロスフェード                                                         | Bypass(208)                                              | 〃                  |
 
-- セクション ON/OFF（Drive On=206 / Pitch On=207 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。
+- セクション ON/OFF（Drive On=206 / Howl On=220 / Pitch On=207 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。
 - 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215 / Mute=216）は §2b。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
 
 ## 2. 音量を「常に一定」に（要・前回方針の更新）⭐
@@ -95,6 +96,29 @@ wet *= gain
 - **基準の使い分け**: エフェクト内の Loudness Match と各セクション ON/OFF は **band-dry（bandPre）** 基準。全体 Bypass だけ **元入力（fullDry）** 基準。
 - エフェクトが中立なら `bandPost = band` → `band+rest = in` で完全透過。`lo=20/hi=20k` で全帯域＝実質オフ。`lo>=hi` は通過帯域が空 → 全 dry。
 - ⚠️ 完全なブリックウォール分離は FFT/線形位相が要る（レイテンシ増）。現状は IIR 24dB/oct（必要なら将来 OS と併せ検討）。重い処理時は境界周辺に位相由来の微小アーティファクトが出うる（中立時は無し）。
+
+## 2c. Howl（歪み成分の自己リングmod：金属的・1ノブ・暫定）⭐
+
+> ⚠️ **暫定実装**。「一旦 金属音に寄せて」の方向。外部キャリア RM → 原音での自己mod に変更（本命は別＝ユーザー確認待ち）。
+
+**歪み成分**を**原音の符号 sign(dry) でリングmod**して金属味を加算する（`dsp/howl.ts`＋`distortion.ts`）。外部キャリア(sin/fc)は使わない（＝つまみ非連動）。`delta = driveOut − dry` を **sign(dry)（原音ピッチの単位方形波）**で掛ける → 原音ピッチに調和した倍音＝**元の音を誇張**した金属。方形波キャリアなので倍音リッチでキンキン。
+
+```
+amt = howl/100; if amt<=0: 素通り。dry = bandPre（歪み前のクリーン帯域）
+for ch, i:
+  carrier = sign(dry)                   // 原音ピッチの単位方形波（±1。痩せない・調和）
+  metal = (driveOut − dry) · carrier    // 歪み成分を原音ピッチでリングmod
+  metal = highpass(metal, 1200Hz)       // DC除去＋キンキン化（固定・つまみ非連動）
+  out   = driveOut + amt·GAIN·metal      // 加算（置換でない。GAIN=6）
+```
+
+- パラメータ: **Howl(218)**=金属ブレンド量（`amt·GAIN`）/ **Howl On(220)**。**1ノブ**。fc 概念は無し。
+- **キャリアは sign(dry)**: 旧 `delta·dry`（原音そのもの）は積が `|dry|` 倍に痩せて**ほぼ聞こえなかった** → **単位振幅の sign(dry)** に変更し、痩せずはっきり鳴る。符号は原音ピッチに同期＝調和（元の音を誇張）。
+- **狙い**: キンキンは**元の音を誇張**した響き（原音ピッチに調和）＝エイリアンな外部トーンでない。基音(dry)は無加工。`Drive=0`→`delta≈0`→金属0（歪みがある所だけ）。
+- **加算**: 歪み(driveOut)はそのまま残し金属を**足す**（crossfade=置換 はやめた）。
+- **HPF 必須**: `delta·sign(dry)` は偶関数成分で DC が出る → ハイパスで除去。これが**キンキン化**も担う（固定 1200Hz、つまみ非連動）。
+- **配置**: 歪み（Drive）の**後**＝差分を作るため。Loudness は更に後で音量一定（バイパスでも不変）。
+- 経緯: 外部キャリア RM（エイリアン/つまみ連動嫌）→ 原音自己mod（`delta·dry`）は痩せて無音 → **sign(dry) キャリア**で痩せ解消（[DECISIONS.md](./DECISIONS.md) 2026-06-21）。暫定。⚠️ 方形波キャリア＝エイリアシング多め（OS=Phase 3）。将来案: 本命キャラ確定 / GAIN・HP の追い込み。
 
 ## 3. 各段の数式（補足）
 

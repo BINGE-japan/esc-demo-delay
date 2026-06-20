@@ -82,6 +82,29 @@
 - [x] `vp check` / `vp build` 通過
 - [~] 試聴で帯域の切れ・Solo/Mute・帯域内外の Wet/Dry を確認、フィルタ急峻さと量感を調整（**要試聴**）
 
+## Phase 2.9 — Howl（ハウリング倍音）（実装済・要試聴）
+
+> ユーザー要望（[DECISIONS.md](./DECISIONS.md) 2026-06-20）。DSP強化の第1弾。
+
+- [x] `dsp/howl.ts`：**入力依存ウェーブフォルダー**（`sin(g·x)` 折り返し・1ノブ・無状態）
+  - 是正経緯: 初版=自己発振ドローン → 共鳴サチュ → どちらも「固定 Freq でキャラ固定」とユーザー指摘 → 共鳴系を廃し非線形シェイピング（wavefolder）へ（[DECISIONS.md](./DECISIONS.md) 2026-06-20）
+- [x] パラメータ Howl(218)/Howl On(220)、Howl Freq(219) は廃止（1ノブ化）
+- [x] **音量一定化**: Howl を Loudness Match の**前段**へ（Drive+Howl をまとめて dry に揃える＝バイパスで音量不変）
+- [x] **金属音へ（暫定）**: wavefolder（＝歪み/fizz でNG）→ **リングモジュレーター**（`x·(1−amt+amt·sin(2π·fc·t))`, `fc=lerp(150,1800,amt)`, 1ノブ）
+- [x] **配置を歪みの前へ**: `Howl→Drive` 順に（金属音を作ってから歪ませる＝ファズが食いつく。後ろだと密でゴチャつく）
+- [x] **キンキン化＋加算ブレンド**: `x·(1+dyn·c)`（dry 常時保持＝金属ブレンド量、べったり回避）。fc は最終 700–3500Hz
+- [x] **歪み成分のみ RM（ユーザー案）**: 基音クリーン・歪みのザリだけ金属化。Drive0→金属0
+- [x] **原音で自己mod＋加算（fc廃止）**: `out = driveOut + amt·GAIN·HPF((driveOut−dry)·sign(dry))`。外部キャリアをやめ原音ピッチでmod＝「元の音を誇張」した調和金属。置換→加算。HPF でキンキン＋DC除去
+  - 痩せ修正: キャリア `dry`→`sign(dry)`（単位方形波）ではっきり鳴るように（[DECISIONS.md](./DECISIONS.md) 2026-06-21）
+- [x] `vp check` / `vp build` 通過
+- [ ] **本命の Howl キャラを確定**（自己mod は暫定。試聴で詰める）
+- [~] 試聴で「上げたら金属が出る／元の音を誇張／べったりでない」を確認、GAIN/HP を調整（**要試聴**）
+
+### 次の DSP 強化（予定）
+
+- [ ] グリッチ強化（BPM同期 / Reverse / Ratchet / Tape-stop / Bitcrush 等）
+- [ ] ピッチ強化（固定シフト / ハーモナイザ / ピッチダイブ / サブオクターブ 等）
+
 ## Phase 3 — オーバーサンプリング
 
 - [ ] OS 方式（FIR/IIR・倍率）を確定し DECISIONS に追記（[DSP.md](./DSP.md) §3）

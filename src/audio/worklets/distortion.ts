@@ -12,6 +12,7 @@ import { PARAMS } from './params'
 import { BandSplit } from './dsp/band'
 import { Saturation } from './dsp/saturation'
 import { LoudnessMatch } from './dsp/loudness'
+import { Howl } from './dsp/howl'
 import { Wobble } from './dsp/wobble'
 import { Glitch } from './dsp/glitch'
 
@@ -32,12 +33,14 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
   private readonly band: BandSplit
   private readonly sat: Saturation
   private readonly loud: LoudnessMatch
+  private readonly howl: Howl
   private readonly wob: Wobble
   private readonly gli: Glitch
   private readonly toggleCoef: number
 
   // クロスフェード用の平滑ゲイン（0..1）
   private satMix = 1
+  private howlMix = 1
   private pitchMix = 1
   private glitchMix = 1
   private bandGain = 1 // recombine: band 成分
@@ -55,6 +58,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     this.band = new BandSplit(sampleRate)
     this.sat = new Saturation(sampleRate)
     this.loud = new LoudnessMatch(sampleRate)
+    this.howl = new Howl(sampleRate)
     this.wob = new Wobble(sampleRate)
     this.gli = new Glitch(sampleRate)
     this.toggleCoef = 1 - Math.exp(-1 / ((TOGGLE_SMOOTH_MS / 1000) * sampleRate))
@@ -83,6 +87,8 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const driveDb = parameters.drive[0]
     const tonePct = parameters.tone[0]
     const outLin = dbToLin(parameters.output[0])
+    const howlAmt = parameters.howl[0]
+    const howlTarget = parameters.howlOn[0] >= 0.5 ? 1 : 0
     const wobAmt = parameters.wobble[0]
     const wobSpeed = parameters.wobbleSpeed[0]
     const wobOccur = parameters.wobbleOccur[0]
@@ -129,7 +135,6 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
 
     // === 歪み Section（output=band を in-place） ===
     this.sat.process(output, driveDb, tonePct)
-    this.loud.process(output, this.bandPre, autoGain) // 基準は帯域 dry
     for (let i = 0; i < len; i++) {
       this.satMix += this.toggleCoef * (satTarget - this.satMix)
       for (let ch = 0; ch < n; ch++) {
@@ -138,6 +143,21 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
         o[i] = pre[i] + (o[i] - pre[i]) * this.satMix
       }
     }
+
+    // === Howl Section（歪み成分 = driveOut − dry にだけ ring mod＝金属味） ===
+    for (let ch = 0; ch < n; ch++) this.snap[ch].set(output[ch]) // snap = 歪み出力（Howl 前）
+    this.howl.process(output, this.bandPre, howlAmt) // dry=bandPre。差分(output−dry)だけ金属化
+    for (let i = 0; i < len; i++) {
+      this.howlMix += this.toggleCoef * (howlTarget - this.howlMix)
+      for (let ch = 0; ch < n; ch++) {
+        const o = output[ch]
+        const s = this.snap[ch]
+        o[i] = s[i] + (o[i] - s[i]) * this.howlMix
+      }
+    }
+
+    // === Loudness Match（Drive+Howl を band-dry に合わせる＝音量一定） ===
+    this.loud.process(output, this.bandPre, autoGain)
 
     // === Pitch Section ===
     for (let ch = 0; ch < n; ch++) this.snap[ch].set(output[ch])

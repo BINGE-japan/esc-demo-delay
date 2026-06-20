@@ -19,7 +19,7 @@ Suara SDK 上に作る **ファズ／ハードクリップ系ディストーシ�
 - **ファズ／ハードクリップ**。基本シェイパーは硬いクリップ（`clamp(x, -1, +1)`）。
 - Drive を上げても Tone を変えても **聴覚上の音量は一定**（計算補正＋遅い自動トリムでラウドネスを揃える。ポンピングはさせない → [DSP.md](./DSP.md) §2）。
 - 音作りの軸を Drive だけでなく **Tone（暗⇄明の Tilt EQ）/ Wobble（ランダムなピッチのヨレ）/ Glitch（再現性ありグリッチ）** に広げ、パラメータ × UI の絡みで遊べる器にする。
-- 構成は **Drive / Pitch / Glitch / Band(Focus) / Master** の 5 セクションに分離（DSP も UI も。各セクション ON/OFF ＋ 帯域指定 ＋ 全体 Bypass）。
+- 構成は **Drive / Howl / Pitch / Glitch / Band(Focus) / Master** の 6 セクションに分離（DSP も UI も。各セクション ON/OFF ＋ 帯域指定 ＋ 全体 Bypass）。
 - ハードクリップは無限次倍音を生むため **折返しノイズ（エイリアシング）対策＝オーバーサンプリング** が品質の肝（→ Phase 3）。
 
 ## 3. スコープ方針
@@ -43,6 +43,8 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 | 201 | Tone          | -100 〜 +100 | 0    | 連続(双極) | %    | 歪み       | **Tilt EQ**。<0 暗 / 0 平 / >0 明                        |
 | 205 | Auto Gain     | 0 / 1        | ON   | トグル     | —    | 歪み       | 遅い自動トリム（残差のラウドネス補正）                   |
 | 206 | Drive On      | 0 / 1        | ON   | トグル     | —    | 歪み       | 歪みセクションの ON/OFF                                  |
+| 218 | Howl          | 0 〜 100     | 0    | 連続       | %    | Howl       | 金属的リングモジュレーター(暫定)の量。1ノブ・音量一定    |
+| 220 | Howl On       | 0 / 1        | ON   | トグル     | —    | Howl       | Howl セクションの ON/OFF                                 |
 | 203 | Wobble        | 0 〜 100     | 0    | 連続       | %    | ピッチ     | ピッチのヨレ幅（Depth）                                  |
 | 210 | Wob Speed     | 0 〜 100     | 40   | 連続       | %    | ピッチ     | ヨレの速さ（LFO 0.5〜14Hz にマップ）                     |
 | 211 | Wob Occur     | 0 〜 100     | 100  | 連続       | %    | ピッチ     | 頻度。100=常に / <100=たまに（**BPM準拠・再現性あり**）  |
@@ -62,6 +64,7 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 - **Drive**: 入力をクリッパに押し込む量。音量は計算補正＋自動トリムで一定（[DSP.md](./DSP.md) §2）。
 - **Tone**: 暗⇄明の **Tilt EQ**（pivot 約 800Hz、±18dB）。中央フラット。Tone でも音量は一定（Tone makeup）。
 - **Auto Gain**: 遅い（~300ms）ラウドネスマッチ。計算補正の残差を埋める。OFF でも計算補正は効く。
+- **Howl**（暫定・金属音寄せ）: **歪み成分の自己リングmod**（**1ノブ・fc 概念なし**）。`delta = 歪み出力 − 原音` を **sign(原音)（原音ピッチの単位方形波）で掛け** → 原音ピッチに調和した倍音＝**元の音を誇張**した金属（エイリアンでない・痩せずはっきり鳴る）。HPF でキンキン化＋DC除去し、歪みに**加算**（基音はクリーン）。`Drive=0` なら金属0（歪みがある所だけ）＝べったり回避。Loudness で音量一定。本命キャラは別途確認（[DSP.md](./DSP.md) §2c）。⚠️ 方形波キャリアでエイリアシング多め（OS=Phase 3）。
 - **Wobble**: 可変ディレイのピッチのヨレ。**Depth**（揺れ幅）/ **Wob Speed**（揺れの速さ）/ **Wob Occur**（頻度。100%=常に、下げると「たまに」＝**BPM グリッドにシード付き判定で再現性あり**）（[DSP.md](./DSP.md) 段7）。
 - **Glitch**: 再現性グリッチ（リピート＝ゲートのミックス）。**Spectral Fill** ON でゲート無音区間に **(-1)ⁿ 変調のスペクトル反転音**（低↔高ミラー）を差し込む（[DSP.md](./DSP.md) 段8）。
 - **Band（Focus）**: エフェクトをかける周波数帯を選ぶ。`band = bandpass(in, Lo, Hi)`、`rest = in − band`（完全再構成）。**帯域内=100%Wet / 帯域外=100%Dry**。**Solo**=帯域だけ試聴 / **Mute**=帯域を抜いた残りだけ試聴。全エフェクト一括（[DSP.md](./DSP.md) §2b）。
@@ -69,12 +72,12 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 - **(bpm)**: 内部 AudioParam。UI/useParam は無く、App が `transport.tempo` を流し込む（Wob Occur の BPM 準拠に使用）。
 - **OS**: 音質設定。構造を変えるため **AudioParam でなく構築時設定**＋グラフ再構築。VST 自動化対象外。
 
-> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-204＋210/211＋213/214、トグル 205-208＋212＋215-217、内部 bpm=209）。値は v0.3 提案 — レビューで確定。
+> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-204＋210/211＋213/214＋218、トグル 205-208＋212＋215-217＋220、内部 bpm=209。219=Howl Freq は廃止）。値は v0.3 提案 — レビューで確定。
 
 ## 5. 信号フロー（最終形の目標）
 
 ```
-in ─┬─ bandpass(Lo..Hi) → band → [Drive→Clip→makeup→Tone→Loudness]→[Wobble]→[Glitch] → bandPost ─┐
+in ─┬─ bandpass(Lo..Hi) → band → [Drive→Clip→makeup→Tone]→[Howl: 歪み成分を原音で自己mod＋HPF＋加算]→[Loudness]→[Wobble]→[Glitch] → bandPost ─┐
     └────────────────────────────── rest = in − band ───────────────────────────────────────────┤
                        Normal: bandPost+rest / Solo: bandPost / Mute: rest
                                                                   → Output → Bypass(in へ) → out
@@ -84,7 +87,7 @@ in ─┬─ bandpass(Lo..Hi) → band → [Drive→Clip→makeup→Tone→Loudn
 
 ## 6. UI
 
-- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **5 セクション（Drive / Pitch / Glitch / Band(Focus) / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（Auto Gain / 各 ON / Solo / Mute / Bypass）はスイッチ。**両 runtime に存在**。現状は仮UI（range スライダ）。本UI（パラメータ×UI の作り込み）はこれから。
+- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **6 セクション（Drive / Howl / Pitch / Glitch / Band(Focus) / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（Auto Gain / 各 ON / Solo / Mute / Bypass）はスイッチ。**両 runtime に存在**。現状は仮UI（range スライダ）。本UI（パラメータ×UI の作り込み）はこれから。
 - **DAW simulator（[SuaraHostPanel.vue](../src/sdk/helper/SuaraHostPanel.vue)）**: Web runtime のみ。再生・入力ソース・レベル・MIDI を供給する DAW 代役。**プラグインのノブはここに足さない**（混同回避）。
 - MVP の見た目は最小（range スライダ可）。専用ノブ部品は後フェーズで検討。
 

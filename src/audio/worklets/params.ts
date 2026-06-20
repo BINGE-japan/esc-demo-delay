@@ -5,7 +5,7 @@
 // worklets を exclude しているが、依存として import するぶんは型チェックを通る（純データのため）。
 // 環境固有 global（DOM / audioworklet）は一切使わないこと。
 
-export type ParamSection = 'drive' | 'pitch' | 'glitch' | 'band' | 'master'
+export type ParamSection = 'drive' | 'howl' | 'pitch' | 'glitch' | 'band' | 'master'
 
 export interface ParamDef {
   /** VST controller の addParameter tag（useParam の id）。本プラグインは 200番台。 */
@@ -71,6 +71,28 @@ export const PARAMS: ParamDef[] = [
     default: 1,
     unit: '',
     section: 'drive',
+    toggle: true,
+  },
+  // --- Howl（入力依存ウェーブフォルダー：倍音エキサイター・1ノブ） ---
+  {
+    id: 218,
+    name: 'howl',
+    label: 'Howl',
+    min: 0,
+    max: 100,
+    default: 0,
+    unit: '%',
+    section: 'howl',
+  },
+  {
+    id: 220,
+    name: 'howlOn',
+    label: 'Howl On',
+    min: 0,
+    max: 1,
+    default: 1,
+    unit: '',
+    section: 'howl',
     toggle: true,
   },
   // --- ピッチ（Wobble） ---

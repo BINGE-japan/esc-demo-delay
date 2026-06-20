@@ -29,6 +29,7 @@ const uiParams: ParamUI[] = PARAMS.filter((p) => !p.hidden).map((p) => ({
 // UI セクション分け。
 const SECTIONS: { key: ParamSection; title: string }[] = [
   { key: 'drive', title: 'Drive' },
+  { key: 'howl', title: 'Howl' },
   { key: 'pitch', title: 'Pitch (Wobble)' },
   { key: 'glitch', title: 'Glitch' },
   { key: 'band', title: 'Band (Focus)' },

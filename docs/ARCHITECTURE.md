@@ -22,6 +22,7 @@ DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.m
 | [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                  | 中       |
 | [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup→Tone＋音量補正）                     | 中       |
 | [src/audio/worklets/dsp/loudness.ts](../src/audio/worklets/dsp/loudness.ts)     | 遅い自動トリム（ラウドネスマッチ）                           | 中       |
+| [src/audio/worklets/dsp/howl.ts](../src/audio/worklets/dsp/howl.ts)             | ハウリング倍音（フィードバック・レゾネーター）               | 中       |
 | [src/audio/worklets/dsp/wobble.ts](../src/audio/worklets/dsp/wobble.ts)         | ピッチのヨレ（可変ディレイ＋ランダム LFO）                   | 中       |
 | [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | 再現性グリッチ（シード付き）                                 | 中       |
 | [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）              | 低       |
@@ -71,8 +72,8 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 
 - `useParam(id, opts)` の `id` は VST controller の `addParameter` tag と一致必須（[param.ts](../src/sdk/param.ts) 冒頭）。
 - 既存: synth `0..5` / saturator `100..102`。本プラグインは **200番台**:
-  - 連続: Drive=200, Tone=201, Output=202, Wobble(Depth)=203, Glitch=204, Wob Speed=210, Wob Occur=211, Band Lo=213(log), Band Hi=214(log)
-  - トグル: Auto Gain=205, Drive On=206, Pitch On=207, Bypass=208, Spectral Fill=212, Solo=215, Mute=216, Glitch On=217
+  - 連続: Drive=200, Tone=201, Output=202, Wobble(Depth)=203, Glitch=204, Wob Speed=210, Wob Occur=211, Band Lo=213(log), Band Hi=214(log), Howl=218（219=Howl Freq は廃止）
+  - トグル: Auto Gain=205, Drive On=206, Pitch On=207, Bypass=208, Spectral Fill=212, Solo=215, Mute=216, Glitch On=217, Howl On=220
   - 内部: bpm=209（UI/useParam なし。`hidden:true`。App が `transport.tempo` を流し込む → Wob Occur の BPM 準拠）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。
 
