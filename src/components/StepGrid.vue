@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Glitch ステップシーケンサの仮UI（横=8分カラム / 縦=タイプ）。
+// Glitch ステップシーケンサの仮UI（横=16分カラム / 縦=タイプ）。本UIは DSP 後に Three.js で刷新。
 // セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive だけ重ねがけ（Mute には不可）。
-// 表示カラム=8分。1クリック/ドラッグでペイント（横になぞって伸縮）。内部/スナップは16分。
+// 1セル=16分（最小）。クリック/横ドラッグでなぞって伸縮（8分=2セル, 長尺=ドラッグ）。
 // 行: Dive(モディファイア・sky色) / Rpt/Rev/Frz/Glt(ベース・排他・emerald) / Mute(最下段・rose色・排他)。
 //   ベース 0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat。
 import { computed, onBeforeUnmount, onMounted } from 'vue'
@@ -13,6 +13,7 @@ const props = defineProps<{ steps: ParamHandle[]; bars: ParamHandle; current: nu
 const BASE_MASK = 7
 const DIVE_BIT = 8
 const MUTE = 4
+const BEAT = STEPS_PER_BAR / 4 // 1拍=4分=16分4つ
 
 type RowKind = 'dive' | 'source' | 'mute'
 interface Row {
@@ -30,34 +31,31 @@ const ROWS: Row[] = [
   { label: 'Mute', val: MUTE, kind: 'mute' },
 ]
 const BAR_TABS = [1, 2, MAX_BARS]
-const EIGHTHS_PER_BAR = STEPS_PER_BAR / 2 // 表示は8分カラム（内部16分の2スロット=1カラム）
 
 const barCount = computed(() => clampBars(props.bars.value))
-const cols = computed(() => barCount.value * EIGHTHS_PER_BAR)
+const cols = computed(() => barCount.value * STEPS_PER_BAR) // 16分カラム数
 
 // ドラッグペイント状態（なぞって伸縮）。同一行内のみ適用。
 let paint: { row: Row; add: boolean } | null = null
 
-function rawAt(dc: number): number {
-  const h = props.steps[2 * dc]
+function rawAt(c: number): number {
+  const h = props.steps[c]
   return h ? Math.round(h.value) : 0
 }
-function active(dc: number, row: Row): boolean {
-  const raw = rawAt(dc)
+function active(c: number, row: Row): boolean {
+  const raw = rawAt(c)
   return row.kind === 'dive' ? (raw & DIVE_BIT) !== 0 : (raw & BASE_MASK) === row.val
 }
-// 表示カラム dc → 内部16分スロット [2dc, 2dc+1] に同じ raw を書く。
-function writeRaw(dc: number, raw: number): void {
-  for (const h of [props.steps[2 * dc], props.steps[2 * dc + 1]]) {
-    if (!h) continue
-    h.begin()
-    h.setFromUser(raw)
-    h.end()
-  }
+function writeRaw(c: number, raw: number): void {
+  const h = props.steps[c]
+  if (!h) return
+  h.begin()
+  h.setFromUser(raw)
+  h.end()
 }
 // add=true で付与、false で除去。ベース排他・Dive 重ね・Mute は Dive クリア。
-function applyCell(dc: number, row: Row, add: boolean): void {
-  const raw = rawAt(dc)
+function applyCell(c: number, row: Row, add: boolean): void {
+  const raw = rawAt(c)
   let base = raw & BASE_MASK
   let dive = (raw & DIVE_BIT) !== 0
   if (row.kind === 'dive') {
@@ -74,15 +72,15 @@ function applyCell(dc: number, row: Row, add: boolean): void {
     else if (base === row.val) base = 0
   }
   const next = base | (dive ? DIVE_BIT : 0)
-  if (next !== raw) writeRaw(dc, next)
+  if (next !== raw) writeRaw(c, next)
 }
-function onDown(dc: number, row: Row): void {
-  const add = !active(dc, row) // クリック=トグル、ドラッグ=同方向に伸縮
+function onDown(c: number, row: Row): void {
+  const add = !active(c, row) // クリック=トグル、ドラッグ=同方向に伸縮
   paint = { row, add }
-  applyCell(dc, row, add)
+  applyCell(c, row, add)
 }
-function onEnter(dc: number, row: Row): void {
-  if (paint && paint.row === row) applyCell(dc, row, paint.add)
+function onEnter(c: number, row: Row): void {
+  if (paint && paint.row === row) applyCell(c, row, paint.add)
 }
 function endPaint(): void {
   paint = null
@@ -95,16 +93,13 @@ function setBars(n: number): void {
   props.bars.setFromUser(n)
   props.bars.end()
 }
-function playing(dc: number): boolean {
-  return Math.floor(props.current / 2) === dc
-}
 function gap(col: number): string {
-  if (col % EIGHTHS_PER_BAR === 0 && col > 0) return 'ml-1.5'
-  if (col % 2 === 0) return 'ml-0.5'
+  if (col % STEPS_PER_BAR === 0 && col > 0) return 'ml-1.5' // 小節頭
+  if (col % BEAT === 0) return 'ml-0.5' // 拍頭
   return ''
 }
-function cellClass(dc: number, row: Row): string {
-  if (!active(dc, row)) return 'border-neutral-800 bg-neutral-900 hover:bg-neutral-800'
+function cellClass(c: number, row: Row): string {
+  if (!active(c, row)) return 'border-neutral-800 bg-neutral-900 hover:bg-neutral-800'
   if (row.kind === 'dive') return 'border-sky-400/70 bg-sky-500/70'
   if (row.kind === 'mute') return 'border-rose-400/70 bg-rose-500/70'
   return 'border-emerald-500/70 bg-emerald-500/70'
@@ -114,7 +109,7 @@ function cellClass(dc: number, row: Row): string {
 <template>
   <div class="flex flex-col gap-1">
     <div class="flex items-center gap-2">
-      <p class="text-[10px] uppercase tracking-widest text-neutral-500">Sequencer · 8th</p>
+      <p class="text-[10px] uppercase tracking-widest text-neutral-500">Sequencer · 16th</p>
       <div class="flex gap-px">
         <button
           v-for="b in BAR_TABS"
@@ -150,7 +145,7 @@ function cellClass(dc: number, row: Row): string {
           :class="[
             cellClass(s - 1, row),
             gap(s - 1),
-            playing(s - 1) ? 'ring-1 ring-amber-400/80' : '',
+            current === s - 1 ? 'ring-1 ring-amber-400/80' : '',
           ]"
           @pointerdown.prevent="onDown(s - 1, row)"
           @pointerenter="onEnter(s - 1, row)"
