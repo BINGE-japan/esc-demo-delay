@@ -428,4 +428,17 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **理由**: ユーザー判断「おそらくもう必要ない」。Mute は素直に無音（両端フェード）でよい。
 **影響**: `params.ts`（212 削除）、`dsp/glitch.ts`（Mute 分岐を gate のみに簡素化・`fill` 引数/`FILL_LEVEL`/`sign` 撤去）、`distortion.ts`（gliFill 配線撤去）。SPEC §4 表/ID 注・DSP §1,§3・ARCHITECTURE §4-5 更新。id 212 は欠番（再利用しない）。
 
+### 2026-06-21 — Glitch 型セット刷新（enum 0..5・Random をモード化・Dry/Repeat 整理）
+
+壁打ちで確定。ステップシーケンサの型を絞り、Random を「セル」から「モード」に変更。
+
+- **Repeat は16分のみ**（旧 1/8・1/4 を廃止）。per-cell 分割（拍ごとに分割を変える）は使わない判断＝行/操作の複雑さを削減。
+- **Dry 行を削除**: 空セル＝Dry(素通り)。StepGrid はアクティブセル再クリックで 0(Dry) にクリア（トグル）。
+- **Random をモード・トグル化**（`glitchRandom`/290）: 「セル単位のランダムは不要」との判断。ON でグリッドを無視し**全ステップ**を seed=絶対step で決定論ランダム（`microKind∈{dry/ラチェット/逆/ハーフ}`＝**dry も混ざる**・再現性あり）。旧「全セル Random」と同等＋dry 混入。
+- **enum を 0..5 に圧縮**: 0 Dry(空) / 1 Glitch / 2 Freeze / 3 Reverse / 4 Mute / 5 Repeat(16分)。
+- これで StepGrid は **5行**（Rpt/Mute/Rev/Frz/Glt）。
+
+**影響**: `dsp/glitch.ts`（enum・latch を randomMode 分岐・dispatch・chunk 簡素化・TYPE_RANDOM/REP8/REP4 撤去）、`params.ts`（step max 8→5・`glitchRandom`(290) 追加・コメント）、`distortion.ts`（randomMode 配線）、`StepGrid.vue`（5行・クリッククリア）。SPEC §4,§6・DSP §1,§3・ARCHITECTURE §2,§5 更新。
+**学び**: 「自由度」は増やすほど良いわけでない＝per-cell 分割は要らなかった。ランダムは**セルでなくモード**の方が UI も意図も素直（全体に効くトグル＋再現性）。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

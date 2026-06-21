@@ -142,9 +142,21 @@ export const PARAMS: ParamDef[] = [
     section: 'glitch',
     toggle: true,
   },
+  // Random モード: グリッドを無視し全ステップを決定論ランダム（dry も混ざる・再現性あり）。
+  {
+    id: 290,
+    name: 'glitchRandom',
+    label: 'Random',
+    min: 0,
+    max: 1,
+    default: 0,
+    unit: '',
+    section: 'glitch',
+    toggle: true,
+  },
   // ステップ 0..15（16分・1小節）。値=タイプ enum:
-  //   0=Dry,1=Glitch(ラチェット),2=Freeze,3=Reverse,4=Random,5=Mute,6=Repeat1/16,7=Repeat1/8,8=Repeat1/4
-  // 隣接する同一値＝1ブロック（幅=継続長）。Repeat の分割=1リピート長（per-cell）。
+  //   0=Dry(空) / 1=Glitch(ラチェット) / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)
+  // 隣接する同一値＝1ブロック（幅=継続長）。
   // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–238。
   ...Array.from(
     { length: 16 },
@@ -153,7 +165,7 @@ export const PARAMS: ParamDef[] = [
       name: `step${i}`,
       label: `Step ${i + 1}`,
       min: 0,
-      max: 8,
+      max: 5,
       default: 0,
       unit: '',
       section: 'glitch',

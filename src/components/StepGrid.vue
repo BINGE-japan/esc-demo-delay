@@ -1,34 +1,32 @@
 <script setup lang="ts">
 // Glitch ステップシーケンサの仮UI（横=16分ステップ / 縦=タイプ・択一）。
-// セルクリックでその列のタイプを設定。最下段=Dry。再生中ステップを枠でハイライト。
+// 空セル=Dry(素通り)。セルクリックでその列にタイプを設定、アクティブセル再クリックでクリア(=Dry)。
 // 値=タイプ enum（params.ts / glitch.ts と一致）:
-//   0=Dry,1=Glitch,2=Freeze,3=Reverse,4=Random,5=Mute,6=Repeat1/16,7=Repeat1/8,8=Repeat1/4
+//   0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)
 import type { ParamHandle } from '@suara/sdk'
 
 const props = defineProps<{ steps: ParamHandle[]; current: number }>()
 
-// 上→下の表示順（最下段 Dry）。Repeat は分割3行（per-cell の1リピート長）。
+// 上→下の表示順（enum 降順）。Dry 行は無し＝空セルが Dry。
 const ROWS = [
-  { label: 'Rp4', val: 8 },
-  { label: 'Rp8', val: 7 },
-  { label: 'Rp16', val: 6 },
-  { label: 'Mute', val: 5 },
-  { label: 'Rnd', val: 4 },
+  { label: 'Rpt', val: 5 },
+  { label: 'Mute', val: 4 },
   { label: 'Rev', val: 3 },
   { label: 'Frz', val: 2 },
   { label: 'Glt', val: 1 },
-  { label: 'Dry', val: 0 },
 ]
 
 function active(stepIdx: number, val: number): boolean {
   const h = props.steps[stepIdx]
-  return h ? Math.round(h.value) === val : val === 0
+  return h ? Math.round(h.value) === val : false
 }
+// クリック: 未選択→そのタイプ、選択済み→0(Dry)へクリア（トグル）。
 function setCell(stepIdx: number, val: number): void {
   const h = props.steps[stepIdx]
   if (!h) return
+  const next = Math.round(h.value) === val ? 0 : val
   h.begin()
-  h.setFromUser(val)
+  h.setFromUser(next)
   h.end()
 }
 </script>
@@ -48,9 +46,7 @@ function setCell(stepIdx: number, val: number): void {
           class="h-4 flex-1 rounded-[2px] border transition-colors"
           :class="[
             active(s - 1, row.val)
-              ? row.val === 0
-                ? 'border-neutral-600 bg-neutral-700'
-                : 'border-emerald-500/70 bg-emerald-500/70'
+              ? 'border-emerald-500/70 bg-emerald-500/70'
               : 'border-neutral-800 bg-neutral-900 hover:bg-neutral-800',
             (s - 1) % 4 === 0 ? 'ml-0.5' : '',
             current === s - 1 ? 'ring-1 ring-amber-400/80' : '',

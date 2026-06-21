@@ -1,29 +1,24 @@
 // Glitch ステップシーケンサ（ブロック=隣接モデル）。横=16分ステップ(1小節)、縦=タイプ。
 // 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の長さ（継続長）**。
 // BPM同期・拍ロック・再現性（パターンがループ＝毎回同じ箇所）。docs/DSP.md §3。
-// type: 0 Dry / 1 Glitch(極短ラチェット) / 2 Freeze(グラニュラー保持) / 3 Reverse(幅=逆レンジ)
-//       / 4 Random(ステップ毎に再抽選) / 5 Mute(無音)
-//       / 6 Repeat1/16 / 7 Repeat1/8 / 8 Repeat1/4（ビートリピート）。
-// Repeat の chunk(1リピート長)はセルの分割＝per-placement。chunk<幅 で連続ループに聞こえる。
+// type(enum): 0 Dry(空=素通り) / 1 Glitch(極短ラチェット) / 2 Freeze(グラニュラー保持)
+//       / 3 Reverse(幅=逆レンジ) / 4 Mute(無音) / 5 Repeat(16分ビートリピート)。
 // Freeze: ブロック頭で直近 FREEZE_REGION_MS を凍結バッファにスナップ→重なり合う窓化グレイン
 //         （FREEZE_VOICES 声・読み位置ジッタ）で継ぎ目を消した持続音（≠スタッター）。docs/DSP.md §3。
-// Random: ブロック幅=暴れる長さ。ステップ毎に seed=絶対step で {ラチェット/逆/ハーフ} を再抽選＝
-//         毎1/16変化（≠均一ループの Repeat）。決定論なので再現性は保つ。
+// Random モード(トグル): グリッドを無視し、全ステップで seed=絶対step から {dry/ラチェット/逆/ハーフ}
+//         を再抽選＝決定論ランダム（dry も混ざる・再現性あり）。
 // 拍位置は App が positionSamples から算出した glitchPhase(0..1)。worklet は localBarPos をサンプル
 // 精度で自走し、大ドリフト（シーク/ループ/再生開始）だけスナップ＝rAFジッタを音に入れない。
 
 const SEED = 0x9e3779b9 | 0
 const STEPS = 16
 
-const TYPE_DRY = 0
-const TYPE_GLITCH = 1
-const TYPE_FREEZE = 2
-const TYPE_REVERSE = 3
-const TYPE_RANDOM = 4
-const TYPE_MUTE = 5
-const TYPE_REP16 = 6
-const TYPE_REP8 = 7
-const TYPE_REP4 = 8
+const TYPE_DRY = 0 // 空セル＝素通り
+const TYPE_GLITCH = 1 // 極短ラチェット
+const TYPE_FREEZE = 2 // グラニュラー保持
+const TYPE_REVERSE = 3 // 幅=逆再生レンジ
+const TYPE_MUTE = 4 // 無音
+const TYPE_REPEAT = 5 // 16分ビートリピート
 
 const HISTORY_MS = 2000 // 履歴リング（Reverse/Repeat/Freeze 用。最遅BPMの 2×幅を確保）
 const FADE_MS = 3 // 端/シームのフェード（クリック回避）
@@ -68,10 +63,11 @@ export class Glitch {
   private blockLen = 1 // ブロック長（=継続長、samples）
   private blockChunk = 1 // grain 系タイプの 1 リピート長
   private resync = 0
-  // Random のマイクロ状態（ステップ毎に再ラッチ）
+  // Random モードのマイクロ状態（ステップ毎に再ラッチ）
   private microStartPos = 0
   private microStartWrite = 0
   private microKind = 0
+  private prevRandomMode = false
   // Freeze（グラニュラー）。
   private readonly freezeGrainLen: number
   private readonly freezeRegionLen: number
@@ -115,13 +111,14 @@ export class Glitch {
   }
 
   // io を in-place。amount=全体 wet(0..100), steps=16 ステップ enum,
-  // glitchPhase=小節内位相(0..1), bpm。
+  // glitchPhase=小節内位相(0..1), bpm, randomMode=グリッド無視の決定論ランダム。
   process(
     io: Float32Array[],
     amount: number,
     steps: Int32Array,
     glitchPhase: number,
     bpm: number,
+    randomMode: boolean,
   ): void {
     const n = io.length
     if (n === 0) return
@@ -153,6 +150,10 @@ export class Glitch {
       this.prevStepIdx = -1 // 次サンプルでブロック再ラッチ
       this.resync = fade
     }
+    if (randomMode !== this.prevRandomMode) {
+      this.prevRandomMode = randomMode
+      this.prevStepIdx = -1 // モード切替で再ラッチ
+    }
 
     for (let i = 0; i < len; i++) {
       for (let ch = 0; ch < n; ch++) this.history[ch][this.histWrite] = io[ch][i]
@@ -161,34 +162,31 @@ export class Glitch {
       if (stepIdx < 0) stepIdx = 0
       else if (stepIdx >= STEPS) stepIdx = STEPS - 1
 
-      // ブロック境界（同一 enum ランの先頭 or 小節頭 or 再同期後）でラッチ
+      // ステップ境界でラッチ。Random モードは毎ステップ再抽選、通常はブロック(隣接ラン)頭で確定。
       if (stepIdx !== this.prevStepIdx) {
-        const type = steps[stepIdx] ?? TYPE_DRY
-        const prevCell = this.prevStepIdx === -1 || stepIdx === 0 ? -999 : (steps[stepIdx - 1] ?? 0)
-        if (type !== prevCell) {
-          this.blockType = type
-          this.blockStartWrite = this.histWrite
-          this.blockStartPos = stepIdx * stepLen
-          let bs = 1
-          for (let j = stepIdx + 1; j < STEPS; j++) {
-            if ((steps[j] ?? 0) === type) bs++
-            else break
-          }
-          this.blockLen = bs * stepLen
-          // grain 系の 1 リピート長を確定
-          let chunk = stepLenI
-          if (type === TYPE_GLITCH) chunk = glitchSlice
-          else if (type === TYPE_REP16) chunk = stepLenI
-          else if (type === TYPE_REP8) chunk = 2 * stepLenI
-          else if (type === TYPE_REP4) chunk = 4 * stepLenI
-          this.blockChunk = Math.min(Math.max(1, chunk), maxGrain)
-          if (type === TYPE_FREEZE) this.snapshotFreeze(n, H, stepIdx)
-        }
-        // Random はブロック内でもステップ毎に再抽選（width=暴れる長さ、中身は毎step変化）
-        if (this.blockType === TYPE_RANDOM) {
+        if (randomMode) {
           this.microStartPos = stepIdx * stepLen
           this.microStartWrite = this.histWrite
-          this.microKind = Math.floor(rand01(stepIdx * 101 + 7) * 3) // 0 ラチェット/1 逆/2 ハーフ
+          // 0 dry / 1 ラチェット / 2 逆 / 3 ハーフ（dry も抽選で混ざる）
+          this.microKind = Math.floor(rand01(stepIdx * 101 + 7) * 4)
+        } else {
+          const type = steps[stepIdx] ?? TYPE_DRY
+          const prevCell =
+            this.prevStepIdx === -1 || stepIdx === 0 ? -999 : (steps[stepIdx - 1] ?? 0)
+          if (type !== prevCell) {
+            this.blockType = type
+            this.blockStartWrite = this.histWrite
+            this.blockStartPos = stepIdx * stepLen
+            let bs = 1
+            for (let j = stepIdx + 1; j < STEPS; j++) {
+              if ((steps[j] ?? 0) === type) bs++
+              else break
+            }
+            this.blockLen = bs * stepLen
+            // grain 系の 1 リピート長: Glitch=1/32 固定スライス、Repeat=16分
+            this.blockChunk = type === TYPE_GLITCH ? glitchSlice : Math.min(stepLenI, maxGrain)
+            if (type === TYPE_FREEZE) this.snapshotFreeze(n, H, stepIdx)
+          }
         }
         this.prevStepIdx = stepIdx
       }
@@ -217,7 +215,7 @@ export class Glitch {
       const chunk = this.blockChunk
       const revLen = Math.min(this.blockLen | 0 || 1, maxGrain)
 
-      // Random のマイクロ位相・端フェード（ステップ単位）
+      // Random モードのマイクロ位相・端フェード（ステップ単位）
       const microPhase = this.localBarPos - this.microStartPos
       const mpf = microPhase < 0 ? 0 : Math.floor(microPhase)
       const mEdge = Math.min(microPhase, stepLen - microPhase)
@@ -225,8 +223,8 @@ export class Glitch {
       if (microEnv < 0) microEnv = 0
       const wetR = wetAmt * microEnv * rGain
 
-      // Freeze グレイン発火（チャンネル非依存・1サンプル1回）
-      if (type === TYPE_FREEZE && this.freezeTimer <= 0) {
+      // Freeze グレイン発火（block モードで Freeze の時のみ・チャンネル非依存・1サンプル1回）
+      if (!randomMode && type === TYPE_FREEZE && this.freezeTimer <= 0) {
         this.spawnFreezeGrain()
         this.freezeTimer += this.freezeHop
       }
@@ -235,37 +233,39 @@ export class Glitch {
         const hist = this.history[ch]
         const dry = io[ch][i]
         let out = dry
-        if (type === TYPE_DRY) {
+        if (randomMode) {
+          // 毎ステップ抽選: 0 dry / 1 ラチェット / 2 逆 / 3 ハーフ
+          if (this.microKind === 0) {
+            out = dry
+          } else if (this.microKind === 2) {
+            let p = mpf
+            if (p >= stepLenI) p = stepLenI - 1
+            out = dry * (1 - wetR) + hist[mod(this.microStartWrite - p, H)] * wetR // 逆再生
+          } else {
+            const c = this.microKind === 1 ? glitchSlice : halfStep // ラチェット / ハーフ
+            const g = this.grain(hist, this.microStartWrite, Math.min(c, maxGrain), mpf, H)
+            out = dry * (1 - wetR) + g * wetR
+          }
+        } else if (type === TYPE_DRY) {
           out = dry
         } else if (type === TYPE_FREEZE) {
           const frz = this.freezeHpProcess(ch, this.freezeRead(ch) * FREEZE_GAIN)
           out = dry * (1 - wet) + frz * wet
         } else if (type === TYPE_MUTE) {
           out = dry * (1 - gateWet) + dry * gateGain * gateWet // 中央=無音・両端フェード
-        } else if (type === TYPE_RANDOM) {
-          let g: number
-          if (this.microKind === 1) {
-            let p = mpf
-            if (p >= stepLenI) p = stepLenI - 1
-            g = hist[mod(this.microStartWrite - p, H)] // 逆再生（ステップ幅）
-          } else {
-            const c = this.microKind === 0 ? glitchSlice : halfStep // ラチェット / ハーフ
-            g = this.grain(hist, this.microStartWrite, Math.min(c, maxGrain), mpf, H)
-          }
-          out = dry * (1 - wetR) + g * wetR
         } else if (type === TYPE_REVERSE) {
           let p = pf
           if (p >= revLen) p = revLen - 1
           out = dry * (1 - wet) + hist[mod(this.blockStartWrite - p, H)] * wet
-        } else {
-          // Glitch / Repeat: grain ループ
+        } else if (type === TYPE_GLITCH || type === TYPE_REPEAT) {
+          // grain ループ（chunk は latch で確定: Glitch=1/32 固定 / Repeat=16分）
           out = dry * (1 - wet) + this.grain(hist, this.blockStartWrite, chunk, pf, H) * wet
         }
         io[ch][i] = out
       }
 
-      // Freeze ボイス前進（チャンネル非依存・1サンプル1回）
-      if (type === TYPE_FREEZE) {
+      // Freeze ボイス前進（block モードで Freeze の時のみ・チャンネル非依存・1サンプル1回）
+      if (!randomMode && type === TYPE_FREEZE) {
         for (let v = 0; v < FREEZE_VOICES; v++) {
           if (this.vPos[v] < 0) continue
           this.vPos[v]++
