@@ -638,4 +638,25 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **確定値**: `FREEZE_LOOP_MS=126 / FREEZE_LEVEL=0.55 / FREEZE_NOISE=0.28`、EQ=HP370・Peak1.2k+14dBQ2.2・Shelf3k-7.2dBQ1、`FREEZE_PINK_SCALE=0.5`（**ピンク音量は要再試聴**＝白→ピンクで知覚音量が変わるため、必要なら SCALE か NOISE を再調整）。
 **学び**: 短ループの「羽ばたき/連打」は**継ぎ目クリックでなくチャンク包絡の周期反復**＝seam crossfade では消えない。**2読み位置×Hann のオーバーラップ加算（和=1）**で包絡を平坦化するのが本質。音量一定化は潰しでなく入力追従。デバッグ→bake は ID を 291 起点で使い回すので撤去時に欠番記録。
 
+### 2026-06-22 — Dive×Mute 共存＋連続フォール / Random をUI生成(ボタン+シード)に刷新
+
+**① Dive を Mute と共存可・フォールを連続化**
+
+**決定**: Dive を **Mute と重ねられる**ようにし（UI 排他を撤去）、Dive のフォール（ピッチ降下）を **DIVE_BIT が連続する範囲(dive run)全体で1回**に変更（従来はベースブロック頭でリセット＝Mute 等で base が変わると**やり直し**）。
+
+- `glitch.ts`: Dive のラッチを base ブロックと**分離**。`diveNow && !divePrev`（DIVE_BIT 連続の頭）でのみ `diveDelay/diveWrite` リセット＋`diveStartPos/diveRunLen` 確定。フォール位相 `dp = (localPos−diveStartPos)/diveRunLen`。
+- **Mute セルの扱い**: 出力は無音（Mute ゲート）のまま、diveBuf には `dry` を書いて内容を途切れさせない＝**ミュート後そのまま降下が続く**。非 Mute は従来どおり遅らせ読み。
+- `StepGrid.vue` `applySlot`: Dive 行は base を触らず dive のみ、Mute 行は dive を触らず base のみ＝共存（raw=Mute\|Dive=12 が成立）。
+  **理由**: ユーザー「長いフォールの間にミュートされても、ミュート後はそのまま Dive の続きが欲しい」。フォールは"効果の継続"なので base ブロックでなく **Dive の連続範囲**に紐づけるのが自然。
+
+**② Random を DSP モード撤去 → UI 生成（Random ボタン＋シード＋Clear）**
+
+**決定**: DSP の「ランダムモード（`glitchRandom`/290 トグル・グリッド無視で全ステップ決定論抽選）」を**全撤去**し、**StepGrid の Random ボタン**がシード（表示・押すたびに前進）から**実セルを生成**して `steps[]` に書く方式に変更。**Clear ボタン**で全消去。
+
+- `params.ts`: `glitchRandom`(290) 削除＝**欠番**。`glitch.ts`: `randomMode` 引数・micro 状態・`rand01`/`SEED` を削除（process が素直にグリッド再生＝コード大幅簡素化）。`distortion.ts`: 配線撤去。`StepGrid.vue`: `seed` ref・`hash()`・`randomize()`（密度 0.45・Dive 重なり 0.12・ベース 1..5）・`clearAll()`＋ボタン。
+  **理由**: 「ランダムは実装ガラッと変えて、ボタン＋シードで押すたびにセル配置が変わる方式に」。実セルを書くので**拍ロック・再現性・後からの手編集**が自然に効く（DSP 特殊モードより素直で柔軟）。
+
+**影響**: `dsp/glitch.ts`（Dive run・Mute 共存・random 撤去）/ `params.ts`（290 削除）/ `distortion.ts`（randomMode 配線撤去）/ `StepGrid.vue`（applySlot・Random/Clear/seed）。docs SPEC §4/§6・DSP §1/§3・ARCHITECTURE §2/§5・TASKS 更新。**290 は欠番**。`vp check`(23)/`vp build` 通過。Random の密度/Dive 率は要試聴（定数）。
+**学び**: 「効果の継続長」を持つモディファイア（Dive）は**自分の連続範囲**に位相を紐づける（base ブロックと分離）と、他タイプの割り込み（Mute）に強い。ランダムは"DSP の特殊再生モード"より"**グリッドに実セルを書く UI 操作**"にする方が、既存のロック/再現性/編集と素直に噛み合う。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

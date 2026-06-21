@@ -91,18 +91,8 @@ export const PARAMS: ParamDef[] = [
     section: 'glitch',
     toggle: true,
   },
-  // Random モード: グリッドを無視し全ステップを決定論ランダム（dry も混ざる・再現性あり）。
-  {
-    id: 290,
-    name: 'glitchRandom',
-    label: 'Random',
-    min: 0,
-    max: 1,
-    default: 0,
-    unit: '',
-    section: 'glitch',
-    toggle: true,
-  },
+  // Random(290) トグルは撤去（2026-06-22）。ランダムは UI(StepGrid)の Random ボタン＋シードで
+  // セルを生成する方式に変更（DSP は素直にグリッドを再生）。290 は欠番。
   // 小節数（ループ長）: 1/2/4 小節をタブで選択。パターン=bars*16 ステップで反復。
   // grid:true で自動スライダから除外し、StepGrid がタブ＋bars*16 列を描画。
   {

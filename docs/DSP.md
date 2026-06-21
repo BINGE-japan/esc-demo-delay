@@ -18,16 +18,16 @@
 4 セクション（**信号フロー順** = Band / Drive / Glitch / Master）。Pitch は Glitch 内のノブ。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
 全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo)`（§2b）。実処理順は上から下。
 
-| セクション | 段                 | 内容                                                                                                                             | パラメータ                                                | ユニット            |
-| ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------- |
-| **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                                           | Drive(200)                                                | `dsp/saturation.ts` |
-| 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                               | —                                                         | 〃                  |
-| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp（固定ON）の遅い envelope で自然圧縮           | Drive 連動 / Comp 固定ON                                  | 〃                  |
-| 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                                     | Tone(201)                                                 | 〃                  |
-| **Pitch**  | Warp ピッチ寄れ    | 可変ディレイを glitchPhase ロックの決定論カーブで揺らす＝再現性ワウ（Glitch の後・帯域内）                                       | Pitch(204)                                                | `dsp/pitch.ts`      |
-| **Glitch** | ステップシーケンサ | ブロック(隣接)・ベース6型(Dry/Glitch/Freeze/Reverse/Mute/Repeat)＋Dive 重ねがけ＋Random モード・小節数1/2/4・BPM拍ロック・再現性 | On(217)/Random(290)/Bars(288)/Step×64(223-286)/phase(287) | `dsp/glitch.ts`     |
-| **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                             | Output(202)                                               | `distortion.ts`     |
-| Master     | Bypass             | 全体を dry へクロスフェード                                                                                                      | Bypass(208)                                               | 〃                  |
+| セクション | 段                 | 内容                                                                                                                         | パラメータ                                    | ユニット            |
+| ---------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------- |
+| **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                                       | Drive(200)                                    | `dsp/saturation.ts` |
+| 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                           | —                                             | 〃                  |
+| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp（固定ON）の遅い envelope で自然圧縮       | Drive 連動 / Comp 固定ON                      | 〃                  |
+| 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                                 | Tone(201)                                     | 〃                  |
+| **Pitch**  | Warp ピッチ寄れ    | 可変ディレイを glitchPhase ロックの決定論カーブで揺らす＝再現性ワウ（Glitch の後・帯域内）                                   | Pitch(204)                                    | `dsp/pitch.ts`      |
+| **Glitch** | ステップシーケンサ | ブロック(隣接)・ベース6型(Dry/Glitch/Freeze/Reverse/Mute/Repeat)＋Dive 重ねがけ(Mute 共存)・小節数1/2/4・BPM拍ロック・再現性 | On(217)/Bars(288)/Step×64(223-286)/phase(287) | `dsp/glitch.ts`     |
+| **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                         | Output(202)                                   | `distortion.ts`     |
+| Master     | Bypass             | 全体を dry へクロスフェード                                                                                                  | Bypass(208)                                   | 〃                  |
 
 - セクション ON/OFF（Glitch On=217）・Solo(215)・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。Drive 段は常時 ON（トグル撤去 2026-06-21）。Pitch(204) は depth ノブ。
 - 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215）は §2b。Mute(216) は撤去（2026-06-21）。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
@@ -163,11 +163,11 @@ glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを�
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 
-縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。**16分解像度**（`bars×16`・最大64 スロット）。UI はクリップ式・8分カラム表示（クリックで16分作成・右端ドラッグで16分スナップ伸縮・本体クリック消去）。**ループ長＝`Bars(288)`(1/2/4 小節)** で可変＝パターンでループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。**セル値 raw= ベース型(下位3bit) | Dive(bit3=8)**。ベース: **0=Dry / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat**（排他）。**Dive** はベース出力に**重ねがけ**できるモディファイア（Mute 不可）。隣接ブロックは raw 全体で判定（Dive 違いは別ブロック）。
+縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。**16分解像度**（`bars×16`・最大64 スロット）。UI はクリップ式・8分カラム表示（クリックで16分作成・右端ドラッグで16分スナップ伸縮・本体クリック消去）＋ **Random ボタン(シードからセル生成・押すたびに別配置)/ Clear ボタン(全消去)**。**ループ長＝`Bars(288)`(1/2/4 小節)** で可変＝パターンでループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。**セル値 raw= ベース型(下位3bit) | Dive(bit3=8)**。ベース: **0=Dry / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat**（排他）。**Dive** はベース出力に**重ねがけ**できるモディファイア（**Mute とも共存可**）。隣接ブロックは raw 全体で判定（Dive 違いは別ブロック）。
 
 **ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（**パターン頭でのみ分割＝小節跨ぎ可**）。**ブロック幅＝その効果の継続長**（隣接で伸ばす＝追加操作なし）。`steps[]`（最大64）が毎ブロック来るのでラン先頭で `patternSteps`(=bars×16) まで前方走査して `blockLen` を確定。ブロック頭で `blockStartWrite`(履歴位置)・chunk・Freeze スナップをラッチ。`blockPhase = localPos − blockStartPos`。
 
-**Random モード（トグル `glitchRandom`/290）**: グリッドを無視し、**全ステップで** seed=絶対step から `microKind∈{0 dry / 1 ラチェット / 2 逆 / 3 ハーフ}` を再抽選＝決定論ランダム（dry も混ざる・再現性あり）。ブロックモデルは使わずステップ独立。モード切替時は次ステップで再ラッチ。
+**ランダム配置**: DSP のランダムモードは撤去（2026-06-22）。**UI(StepGrid)の Random ボタン**がシード(表示・押すたびに前進)からセル(ベース型＋低確率 Dive)を `steps[]` に書く＝**実セルなので拍ロック・再現性・編集はそのまま**。Clear ボタンで全消去。worklet はグリッドを素直に再生するだけ。
 
 **拍同期（拍ロック＋サンプル精度＋ジッタ耐性）**:
 
@@ -201,15 +201,14 @@ Freeze:  ブロック頭で直近 FREEZE_LOOP_MS(=126ms) を掴み、**オーバ
 Reverse: hist[blockStartWrite − blockPhase]（revLen=ブロック幅）＝直前ブロック幅を逆再生
 Mute:    gate（中央=無音・両端 FADE）
 Repeat:  chunk=16分(stepLen) を継続長(ブロック幅)ぶんループ。幅>16分 で連続ループに聞こえる
-Dive(重ね): レコードストップ・モディファイア。**ベース出力を diveBuf に貯め**、p=blockPhase/blockLen で
+Dive(重ね): レコードストップ・モディファイア。**ベース出力を diveBuf に貯め**、p=divePhase/diveRunLen で
          再生レートを 1→DIVE_END_RATE(=0.5=1oct下)へ**線形減速**（原音→1oct下・上振れ無し）。
-         diveWrite−diveDelay を読み diveDelay を (1−rate) 伸長＝読み遅れ＝降下（セル長＝降下時間）。
-         ベース(Glitch/Freeze/…/Dry) に重ねがけ＝そのブロック出力ごと降下。Mute には不可（UI 排他）
+         **フォールは DIVE_BIT が連続する範囲(dive run)全体で1回**＝ベースが変わってもトラジェクトリ連続。
+         **Mute とも共存可**: Mute セルは出力無音だが diveBuf には dry を書き diveDelay は進む＝
+         ミュート後そのまま降下が続く（やり直しにならない）。
 ```
 
-**Random モード時**（グリッド無視・全ステップ独立）: `microKind` で `0 dry / 1 ラチェット(1/32) / 2 逆(ステップ幅) / 3 ハーフ(stepLen/2 ループ)` を毎ステップ抽選。端は microEnv フェード。
-
-`Glitch(204)`=全体 wet（既定100、空グリッド=全Dryで透過）。`Random(290)`=Random モード トグル。
+`Glitch(204)`=Pitch に転用済（空グリッド=全Dryで透過のため専用 wet ノブ不要）。ランダム配置は UI(StepGrid)で生成（上記）。
 
 ⚠️ Glitch は **loudness 後・band 内**で動作＝Reverse/Repeat は「歪んだ band 信号」のグレイン。4/4 前提(v1)。**同タイプ隣接は必ず融合**（独立した同タイプ短ブロック連打は不可・要ギャップ）。ブロックは**パターン頭でのみ分割**＝小節跨ぎブロック可。低BPM履歴・自動化レーン・停止中ホールドは [SPEC.md](./SPEC.md) §8。Tape-stop は後日。
 

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Glitch ステップシーケンサの仮UI（クリップ式・横=8分カラム / 縦=タイプ）。本UIは DSP 後に Three.js で刷新。
-// セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive だけ重ねがけ（Mute には不可）。
+// セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive は重ねがけ（**Mute とも共存可**）。
 // 内部16分（1スロット=SLOT_W px、8分=2スロット）。空をクリック=16分セル作成（デフォ最短）、
 // セルを左右どちらにドラッグでも16分スナップで伸縮（掴んだ反対端を固定）、セルをクリック(無移動)で消去。
 // 行: Dive(モディファイア・sky) / Rpt/Rev/Frz/Glt(ベース・排他・emerald) / Mute(最下段・rose・排他)。
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+// Random ボタン=シードからセルをランダム生成（押すたびに別配置）/ Clear=全消去。
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
 import { STEPS_PER_BAR, MAX_BARS, clampBars } from '../audio/worklets/params'
 
@@ -69,19 +70,17 @@ function writeRaw(s: number, raw: number): void {
   h.setFromUser(raw)
   h.end()
 }
-// 1スロットに行の属性を付与/除去（ベース排他・Dive 重ね・Mute は Dive クリア）。
+// 1スロットに行の属性を付与/除去（ベースは排他、Dive は重ね＝Mute とも共存可）。
 function applySlot(s: number, row: Row, add: boolean): void {
   const raw = rawAt(s)
   let base = raw & BASE_MASK
   let dive = (raw & DIVE_BIT) !== 0
   if (row.kind === 'dive') {
-    if (add && base === MUTE) base = 0 // Mute 箇所に Dive → Mute をどけて Dive 優先
-    dive = add
+    dive = add // base はそのまま（Mute とも共存）
   } else if (row.kind === 'mute') {
-    if (add) {
-      base = MUTE
-      dive = false
-    } else if (base === MUTE) base = 0
+    if (add)
+      base = MUTE // dive は触らない（共存）
+    else if (base === MUTE) base = 0
   } else {
     if (add) base = row.val
     else if (base === row.val) base = 0
@@ -161,6 +160,34 @@ function setBars(n: number): void {
   props.bars.setFromUser(n)
   props.bars.end()
 }
+
+// --- ランダム生成 / クリア ---
+const seed = ref(1)
+const RND_DENSITY = 0.45 // セルが入る確率（16分毎）
+const RND_DIVE = 0.12 // Dive が重なる確率
+// 決定論ハッシュ [0,1)（seed と index から）。
+function hash(a: number, b: number): number {
+  let t = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) >>> 0
+  t = Math.imul(t ^ (t >>> 13), 1274126177) >>> 0
+  return ((t ^ (t >>> 16)) >>> 0) / 4294967296
+}
+// 現在の小節範囲をシードからランダムに埋める（押すたびに seed 前進＝別配置）。範囲外は 0。
+function randomize(): void {
+  seed.value = (seed.value + 1) | 0
+  const sd = seed.value
+  const n = slots.value
+  for (let s = 0; s < props.steps.length; s++) {
+    let raw = 0
+    if (s < n && hash(sd, s) < RND_DENSITY) {
+      raw = 1 + Math.floor(hash(sd, s * 7 + 1) * 5) // ベース 1..5
+      if (hash(sd, s * 7 + 3) < RND_DIVE) raw |= DIVE_BIT
+    }
+    writeRaw(s, raw)
+  }
+}
+function clearAll(): void {
+  for (let s = 0; s < props.steps.length; s++) writeRaw(s, 0)
+}
 function rowColor(row: Row): string {
   if (row.kind === 'dive') return 'bg-sky-500/70'
   if (row.kind === 'mute') return 'bg-rose-500/70'
@@ -188,6 +215,23 @@ function rowColor(row: Row): string {
           @click="setBars(b)"
         >
           {{ b }}{{ b > 1 ? ' bars' : ' bar' }}
+        </button>
+      </div>
+      <div class="flex items-center gap-1">
+        <button
+          type="button"
+          class="rounded-[2px] bg-sky-600/70 px-1.5 py-0.5 text-[9px] text-neutral-50 transition-colors hover:bg-sky-500/70"
+          @click="randomize"
+        >
+          Random
+        </button>
+        <span class="tabular-nums text-[9px] text-neutral-500">#{{ seed }}</span>
+        <button
+          type="button"
+          class="rounded-[2px] bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-400 transition-colors hover:bg-neutral-700"
+          @click="clearAll"
+        >
+          Clear
         </button>
       </div>
     </div>
