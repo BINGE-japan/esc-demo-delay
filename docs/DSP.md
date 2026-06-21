@@ -160,7 +160,7 @@ cur   += smoothCoef*(target - cur)              // per-sample 平滑（block/rAF
 y      = lerp(buf[w-cur], buf[w-cur+1], frac)   // フラクショナル読み出し（ドップラー＝寄れ）
 ```
 
-glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。`Swing`(±変調幅)を上げる/`Rate`(K=区間数=細かさ・速さ)を上げると揺れが大きく/速くなる。`Base`≥`Swing` でディレイが正に保たれる。**Swing/Base/Rate/Smooth は現在 DEBUG param（pchSwing 291/pchBase 292/pchRate 293/pchSmooth 294）**＝耳で当てたら pitch.ts 定数へ焼き戻し撤去。band/rest は相補なので中心ディレイのコムは実質無し。揺れ速度はパターン長(bars)にも依る（長いほど遅い）。
+glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。耳で確定（2026-06-21）: `SWING_MS`=16(±変調幅)・`BASE_MS`=20(中心ディレイ)・`RATE`=4(K=区間数=細かさ/速さ)・`SMOOTH_MS`=4。`BASE`≥`SWING` でディレイが正。band/rest は相補なので中心ディレイのコムは実質無し。揺れ速度はパターン長(bars)にも依る（長いほど遅い）。
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 

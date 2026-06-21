@@ -506,4 +506,9 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `dsp/pitch.ts`（値ノイズ・process 引数 swing/base/rate/smooth）、`params.ts`（291–294）、`distortion.ts`（配線）、`App.vue`（fmt に `ms` 再追加）。DSP §Pitch 更新。確定後に定数化して 291–294 撤去。
 **学び**: 「再現性」は**位相ロックの決定論カーブ**で担保しつつ、揺れの大きさ/速さは Swing/Rate で独立に出すと調整が素直。値ノイズはループ端を `h[K]=h[0]` で連続にすれば周期化＝再現性と両立。
 
+### 2026-06-21 — Pitch(Warp) 定数を耳で確定（範囲確定）
+
+**決定**: `SWING_MS=16` / `RATE=4` / `BASE_MS=20` / `SMOOTH_MS=4` を `dsp/pitch.ts` 定数へ焼き戻し、DEBUG param（pchSwing/Base/Rate/Smooth = 291–294）を撤去。
+**影響**: `pitch.ts`（定数化・process 引数を depth/glitchPhase に戻す）、`params.ts`（291–294 削除）、`distortion.ts`（配線）、`App.vue`（`ms` fmt 撤去）。DSP §Pitch 更新。291–294 は欠番。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。
