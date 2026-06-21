@@ -378,4 +378,19 @@
 **影響**: `dsp/glitch.ts` 全面改修、`params.ts`(step×16+glitchPhase+`grid`+Glitch default)、`distortion.ts`(step 配列+phase 受け渡し)、`App.vue`(phase pump+grid 振り分け+StepGrid)、`src/components/StepGrid.vue` 新規。SPEC §2,4,6 / DSP §1,3 / ARCHITECTURE §2,4,5 / TASKS Phase 2.11 を更新。`vp check`(22 files)/`vp build` 通過。
 **学び**: 「ランダム感×再現性×非手打ち×おいしい箇所」は**短いループ・パターン＋拍ロック＋"Random"を1タイプ化**で同時解決。曲位置同期は **App が 0..1 位相を計算→worklet 自走＋大ズレのみスナップ**で float 精度/ジッタ/レイテンシ非申告を回避（出力は測らない）。非スカラ配列は **ステップ毎スカラ AudioParam** が既存ブリッジに最も素直。
 
+### 2026-06-21 — Glitch シーケンサをブロック(隣接)モデルに＋タイプ刷新（Repeat per-cell 分割・Mute）
+
+壁打ちで詰めた結論。ステップシーケンサ（`c028013`）を進化:
+
+- **ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の長さ（継続長）**。隣接で伸ばす＝追加操作・ノブ・行ゼロ（dblue のリサイズ・ブロックと同発想）。
+- **ループの2軸問題**: ループは chunk(1リピート長)×継続長の2軸。隣接は1軸しか与えない＝継続長に割当。**chunk はパターンから導出不能**なのでグローバル1ノブだと拍ごとに変えられない → **chunk をセル(enum)に内包＝per-cell** が唯一の自由解（「行で見せる」も「セルで持つ」も同じデータの別ビュー）。よって Repeat を分割3つ（1/16・1/8・1/4）の enum 値に。データは enum 拡張のみ（新 param・ノブ無し）。
+- **リネーム**（混乱回避）: 旧 Repeat→**Glitch**（極短ラチェット）、旧 Loop→**Repeat**（ビートリピート）。**Mute** 新規。
+- enum 0..8: Dry / Glitch / Freeze / Reverse / Random / Mute / Repeat1/16 / Repeat1/8 / Repeat1/4。
+- タイプ別: **Reverse はブロック幅＝逆再生レンジ**（幅で逆レンジが伸びる）。**Mute** に Spectral Fill(212) を移管（無音に (-1)^n 反転を差し込む）。**Repeat** は chunk=分割を継続長ぶんループ（chunk<幅 で連続ループ）。Glitch=固定極短(1/32)スライス、Freeze=70ms 保持、Random=シード stutter/gate。
+- 全タイプ履歴リング読み、ブロック頭で grain ラッチ、端/シームは FADE フェード。拍同期（glitchPhase→localBarPos 自走＋大ドリフトのみスナップ）は流用。
+- 他製品の裏取り: Ableton Beat Repeat の "Grid"(スライス長=グローバル1ノブで artifact↔loop)、dblue Glitch(リサイズ・ブロック＋per-scene パラメータ)、Effectrix(per-step は別 modulation lane)。→ per-cell 分割は「行/セルどちらのビューでも可」の素直な自由解と判断。
+
+**影響**: `dsp/glitch.ts` 全面（per-step→ブロック・ディスパッチ、9タイプ）。`params.ts`（step max 4→8・enum コメント・Fill→Mute 注）。`StepGrid.vue`（9行）。`distortion.ts` は不変（steps 0..8 round）。SPEC §4 / DSP §1,§3 / ARCHITECTURE §2,§5 / TASKS を更新。`vp check`(22)/`vp build` 通過。
+**学び**: 「per-placement で2軸自由」を行/ノブ肥大なしで＝**継続長は隣接(ブロック幅)・chunk はセル enum**。ループ系は「chunk×継続長」を分けて考えると設計が決まる。業界は chunk=グローバルが主流だが、グリッドなら per-cell enum が最も自由かつ素直。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

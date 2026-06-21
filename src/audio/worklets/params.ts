@@ -141,6 +141,7 @@ export const PARAMS: ParamDef[] = [
     unit: '',
     section: 'glitch',
     toggle: true,
+    // Mute ステップの無音にスペクトル反転音（(-1)^n）を差し込む。
   },
   {
     id: 217,
@@ -153,7 +154,9 @@ export const PARAMS: ParamDef[] = [
     section: 'glitch',
     toggle: true,
   },
-  // ステップ 0..15（16分・1小節）。値=タイプ enum（0=Dry,1=Repeat,2=Freeze,3=Reverse,4=Random）。
+  // ステップ 0..15（16分・1小節）。値=タイプ enum:
+  //   0=Dry,1=Glitch(ラチェット),2=Freeze,3=Reverse,4=Random,5=Mute,6=Repeat1/16,7=Repeat1/8,8=Repeat1/4
+  // 隣接する同一値＝1ブロック（幅=継続長）。Repeat の分割=1リピート長（per-cell）。
   // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–238。
   ...Array.from(
     { length: 16 },
@@ -162,7 +165,7 @@ export const PARAMS: ParamDef[] = [
       name: `step${i}`,
       label: `Step ${i + 1}`,
       min: 0,
-      max: 4,
+      max: 8,
       default: 0,
       unit: '',
       section: 'glitch',

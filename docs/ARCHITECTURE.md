@@ -14,19 +14,19 @@ SDK の詳細は [src/sdk/index.ts](../src/sdk/index.ts) 参照。本書は **�
 
 DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.md](./DSP.md) §1/§6）。
 
-| パス                                                                            | 役割                                                               | 触る頻度 |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し               | 高       |
-| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                   | 高       |
-| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）       | 高       |
-| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                        | 中       |
-| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結** | 中       |
-| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用 | 中       |
-| [src/audio/worklets/dsp/wobble.ts](../src/audio/worklets/dsp/wobble.ts)         | ピッチのヨレ（可変ディレイ＋ランダム LFO）                         | 中       |
-| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（拍ロック・履歴リング・5タイプ）      | 中       |
-| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch ステップシーケンサの UI（16列×5行・grid param 駆動）        | 中       |
-| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                    | 低       |
-| `docs/`                                                                         | 仕様の SSoT                                                        | 高       |
+| パス                                                                            | 役割                                                                  | 触る頻度 |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------- |
+| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                  | 高       |
+| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                      | 高       |
+| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）          | 高       |
+| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                           | 中       |
+| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**    | 中       |
+| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用    | 中       |
+| [src/audio/worklets/dsp/wobble.ts](../src/audio/worklets/dsp/wobble.ts)         | ピッチのヨレ（可変ディレイ＋ランダム LFO）                            | 中       |
+| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接モデル・拍ロック・9タイプ） | 中       |
+| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch ステップシーケンサの UI（16列×9行・grid param 駆動）           | 中       |
+| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                       | 低       |
+| `docs/`                                                                         | 仕様の SSoT                                                           | 高       |
 
 - 各 DSP ユニットは `class`＋`constructor(sampleRate)`。音作りの定数は**ユニット冒頭**に集約。
 - `distortion.ts` は入力を dry に退避し、各ユニットを順に呼び、セクション ON/OFF・Bypass を**クロスフェード**で合成（[DSP.md](./DSP.md) §1）。
@@ -76,7 +76,7 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 - 既存: synth `0..5` / saturator `100..102`。本プラグインは **200番台**:
   - 連続: Drive=200, Tone=201, Output=202, Wobble(Depth)=203, Glitch=204, Wob Speed=210, Wob Occur=211, Band Lo=213(log), Band Hi=214(log)
   - トグル: Drive On=206, Comp=222, Pitch On=207, Bypass=208, Spectral Fill=212, Solo=215, Mute=216, Glitch On=217
-  - ステップ（`grid`・enum 0..4）: Step 1–16 = 223–238（Glitch シーケンサ。useParam あり・自動スライダなし）
+  - ステップ（`grid`・enum 0..8）: Step 1–16 = 223–238（Glitch シーケンサ。0Dry/1Glitch/2Freeze/3Reverse/4Random/5Mute/6-8Repeat。useParam あり・自動スライダなし）
   - 内部: bpm=209（App が `transport.tempo` を供給）/ glitchPhase=239（App が小節内位相 0..1 を供給）。どちらも `hidden:true`・UI/useParam なし
   - 廃止/欠番: 205＝旧 Auto Gain（リアクティブ自動トリム撤去、2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝反映されなかった実験の名残。再利用しない（VST tag 衝突回避）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。

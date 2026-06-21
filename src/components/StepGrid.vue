@@ -1,17 +1,22 @@
 <script setup lang="ts">
 // Glitch ステップシーケンサの仮UI（横=16分ステップ / 縦=タイプ・択一）。
 // セルクリックでその列のタイプを設定。最下段=Dry。再生中ステップを枠でハイライト。
-// 値=タイプ enum（params.ts / glitch.ts と一致）: 0=Dry,1=Repeat,2=Freeze,3=Reverse,4=Random。
+// 値=タイプ enum（params.ts / glitch.ts と一致）:
+//   0=Dry,1=Glitch,2=Freeze,3=Reverse,4=Random,5=Mute,6=Repeat1/16,7=Repeat1/8,8=Repeat1/4
 import type { ParamHandle } from '@suara/sdk'
 
 const props = defineProps<{ steps: ParamHandle[]; current: number }>()
 
-// 上→下の表示順（最下段 Dry）。
+// 上→下の表示順（最下段 Dry）。Repeat は分割3行（per-cell の1リピート長）。
 const ROWS = [
+  { label: 'Rp4', val: 8 },
+  { label: 'Rp8', val: 7 },
+  { label: 'Rp16', val: 6 },
+  { label: 'Mute', val: 5 },
   { label: 'Rnd', val: 4 },
   { label: 'Rev', val: 3 },
   { label: 'Frz', val: 2 },
-  { label: 'Rep', val: 1 },
+  { label: 'Glt', val: 1 },
   { label: 'Dry', val: 0 },
 ]
 

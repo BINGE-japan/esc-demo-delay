@@ -25,7 +25,7 @@
 | 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替 | Drive 連動 / Comp(222)                                       | 〃                  |
 | 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                         | Tone(201)                                                    | 〃                  |
 | **Pitch**  | Wobble             | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）                                                                      | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207)     | `dsp/wobble.ts`     |
-| **Glitch** | ステップシーケンサ | 16分ステップ×タイプ(Dry/Repeat/Freeze/Reverse/Random)・BPM拍ロック・再現性                                           | Glitch(204)wet/Fill(212)/On(217)/Step×16(223-238)/phase(239) | `dsp/glitch.ts`     |
+| **Glitch** | ステップシーケンサ | ブロック(隣接)モデル・9タイプ(Dry/Glitch/Freeze/Reverse/Random/Mute/Repeat×3)・BPM拍ロック・再現性                   | Glitch(204)wet/Fill(212)/On(217)/Step×16(223-238)/phase(239) | `dsp/glitch.ts`     |
 | **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                 | Output(202)                                                  | `distortion.ts`     |
 | Master     | Bypass             | 全体を dry へクロスフェード                                                                                          | Bypass(208)                                                  | 〃                  |
 
@@ -168,7 +168,9 @@ data = lerp(buf[floor(w-delay)], next, frac)          // フラクショナル�
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 
-横=**16分ステップ(1小節)** / 縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。パターンがループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。タイプ enum: **0=Dry / 1=Repeat(ラチェット) / 2=Freeze / 3=Reverse / 4=Random**。
+横=**16分ステップ(1小節)** / 縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。パターンがループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。タイプ enum: **0=Dry / 1=Glitch(極短ラチェット) / 2=Freeze / 3=Reverse / 4=Random / 5=Mute / 6=Repeat1/16 / 7=Repeat1/8 / 8=Repeat1/4**。
+
+**ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の継続長**（隣接で伸ばす＝追加操作なし）。`steps[]` 全16個が毎ブロック来るのでラン先頭で前方走査して `blockLen` を確定。ブロック頭で `blockStartWrite`(履歴位置)・grain・Random 抽選をラッチ。`blockPhase = localBarPos − blockStartPos`。
 
 **拍同期（拍ロック＋サンプル精度＋ジッタ耐性）**:
 
@@ -185,22 +187,23 @@ stepIdx = floor(localBarPos / (samplesPerBar/16));  posInStep = localBarPos - st
 
 小ドリフトは無視＝**rAF(60Hz) ジッタを音に入れない**。大ドリフト（シーク/ループ/再生開始）だけスナップ。出力は測らない。
 
-**履歴リング**: ch 毎に `HISTORY_MS`(=2000ms,≈768KB stereo@48k) を全サンプル書込。Repeat/Freeze/Reverse はここからグレイン読み（grain≤`historyLen/2`・stepLen≤historyLen/2 で上書き前に読了）。
+**履歴リング**: ch 毎に `HISTORY_MS`(=2000ms,≈768KB stereo@48k) を全サンプル書込。grain/Reverse はここから読み（chunk・revLen ≤ `historyLen/2` にクランプ）。grain は `blockStartWrite` 終端の chunk をループ読み（シーム crossfade でクリック回避）。
 
-**タイプ別**（stepStartWrite=ステップ開始時の書込位置、`out=dry*(1-wet)+fx*wet`、wet=`Glitch(204)/100`×境界フェード）:
+**タイプ別**（`out=dry*(1-wet)+fx*wet`、wet=`Glitch(204)/100`×端フェード×再同期。**端フェードはブロック端のみ**＝内部ステップ境界では絞らない）:
 
 ```
 Dry:     fx = dry
-Repeat:  grain=stepLen/REPEAT_SUBDIV(=4) を stepStartWrite 終端からループ＝ラチェット
-Freeze:  grain=FREEZE_GRAIN(≈70ms) をループ保持
-Reverse: hist[stepStartWrite - posInStep] ＝直近を逆再生
-Random:  rand01(stepIdx) で stutter(スライス≈30ms ループ) / gate を選択（シード＝決定論）
-         gate: 中央無音・両端 FADE。Spectral Fill(212) ON で (-1)^n スペクトル反転を差し込む
+Glitch:  grain = 1/32音符の極短スライスをループ＝ラチェット/アーティファクト（chunk 固定）
+Freeze:  grain = FREEZE_GRAIN(≈70ms) をループ保持
+Reverse: hist[blockStartWrite − blockPhase]（revLen=ブロック幅）＝直前ブロック幅を逆再生
+Random:  rand01(blockIdx) で stutter(極短 grain ループ) / gate を選択（シード＝決定論）
+Mute:    gate（中央=無音・両端 FADE）。Spectral Fill(212) ON で (-1)^n スペクトル反転を差し込む
+Repeat1/16・1/8・1/4: chunk=分割(1/2/4×stepLen) を継続長ぶんループ。chunk<幅 で連続ループ
 ```
 
-境界・スナップは `FADE_MS`(≈3ms) フェードでクリック回避。`Glitch(204)`=全体 wet（既定100、空グリッド=全Dryで透過）。Random の発生確率は従来どおり `(amount/100)*MAX_PROB`。
+`Repeat` の chunk(分割) は**セルの enum 値＝per-placement**（拍ごとに 1/16・1/8・1/4 を変えられる）。`Glitch(204)`=全体 wet（既定100、空グリッド=全Dryで透過）。
 
-⚠️ Glitch は **loudness 後・band 内**で動作＝Reverse/Freeze は「歪んだ band 信号」のグレイン。4/4 前提(v1)。低BPMの履歴・16自動化レーン・停止中ホールドは [SPEC.md](./SPEC.md) §8。完全ランダムトグル/Tape-stop は後日。
+⚠️ Glitch は **loudness 後・band 内**で動作＝Reverse/Repeat は「歪んだ band 信号」のグレイン。4/4 前提(v1)。**同タイプ隣接は必ず融合**（独立した同タイプ短ブロック連打は不可・要ギャップ）。低BPM履歴・自動化レーン・停止中ホールドは [SPEC.md](./SPEC.md) §8。完全ランダムトグル/Tape-stop は後日。
 
 ### Output / Bypass（`distortion.ts`）
 

@@ -109,15 +109,15 @@
 
 > 壁打ちで確定（[DECISIONS.md](./DECISIONS.md) 2026-06-21）。横=16分ステップ(1小節)/縦=タイプ・BPM拍ロック・再現性。
 
-- [x] `params.ts`: step0..15=223–238（`grid` フラグ・enum 0..4）、glitchPhase=239(hidden)、Glitch(204) 既定 0→100
-- [x] `dsp/glitch.ts` 全面改修: 履歴リング(`HISTORY_MS`=2000)・ステップディスパッチ・5タイプ（Dry/Repeat/Freeze/Reverse/Random）・wet/fill・境界フェード
+- [x] 初版: 16ステップ・5タイプ（Dry/Repeat/Freeze/Reverse/Random）・拍同期・StepGrid 仮UI（コミット `c028013`）
+- [x] **ブロック(隣接)モデルに刷新**（壁打ち・[DECISIONS.md](./DECISIONS.md) 2026-06-21）: 同一 enum 連続セル＝1ブロック・**幅=継続長**。`dsp/glitch.ts` を per-step→ブロック・ディスパッチに全面書換
+- [x] **タイプ刷新**: enum 0..8＝Dry/**Glitch**(旧Repeat)/Freeze/**Reverse(幅=逆レンジ)**/Random/**Mute**(新・Spectral Fill 移管)/**Repeat×3**(旧Loop=ビートリピート, chunk=1/16・1/8・1/4 を**per-cell**)
+- [x] `params.ts`: step max 4→8・enum コメント・Fill→Mute 注。`StepGrid.vue` 9行に。`distortion.ts` は不変（0..8 round）
 - [x] 拍同期: App が positionSamples(VST)/ctx.currentTime(Web) → glitchPhase(0..1)、worklet は自走＋大ドリフトのみスナップ（サンプル精度・ジッタ耐性）
-- [x] `distortion.ts`: step×16 を Int32Array に読み・glitchPhase 受け渡し
-- [x] `src/components/StepGrid.vue`（16列×5行・列択一・最下段Dry・再生中ハイライト）＋ App 配線（grid をスライダから除外）
 - [x] `vp check`(22 files) / `vp build` 通過
-- [~] **試聴（DSP先行の核）**: パターン置いて (a)16分位置で発火 (b)再生し直しで同一＝再現性 (c)Random も決定論 (d)境界クリック無し。テンポスイープで拍ロック。各タイプの質感・`HISTORY_MS`/`REPEAT_SUBDIV`/`FREEZE_GRAIN_MS` を耳調整（**要試聴**）
-- [ ] 音が決まったら **StepGrid UI を整形**（Tailwind・ハイライト・ラベル）＝DSP確定後
-- [ ] 後日: 完全ランダムトグル / Tape-stop / per-step probability / 4/4 以外（timeSig を worklet へ）
+- [~] **試聴（DSP先行の核）**: ブロック幅で継続長／Repeat 行で chunk（拍ごと可変）／Reverse 幅で逆レンジ／Mute(+Fill)／拍ロック・再現性・境界クリック無し。`GLITCH_SLICE`/`FREEZE_GRAIN_MS`/分割 を耳調整（**要試聴**）
+- [ ] 音が決まったら **StepGrid UI を整形**（Repeat 分割のコンパクト表示・配色・ハイライト・ラベル）＝DSP確定後
+- [ ] 後日: 完全ランダムトグル / Tape-stop / Random の小節間変化 / ブロック split 操作 / 4/4 以外（timeSig を worklet へ）
 
 ### 次の DSP 強化（予定）
 
