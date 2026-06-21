@@ -27,6 +27,8 @@ export interface ParamDef {
   log?: boolean
   /** UI に出さず useParam も作らない（transport 等が裏で供給する内部 AudioParam）。 */
   hidden?: boolean
+  /** ステップシーケンサのグリッド用。useParam ハンドルは作るが自動スライダ UI には出さない（専用グリッド UI が描画）。 */
+  grid?: boolean
 }
 
 export const PARAMS: ParamDef[] = [
@@ -117,14 +119,15 @@ export const PARAMS: ParamDef[] = [
     section: 'pitch',
     toggle: true,
   },
-  // --- グリッチ ---
+  // --- グリッチ（ステップシーケンサ：横=16分ステップ / 縦=タイプ。docs/DSP.md §3 Glitch） ---
+  // Glitch=全体 intensity/wet。既定 100（空グリッド=全Dryなら透過なので安全。ステップを置けば可聴）。
   {
     id: 204,
     name: 'glitch',
     label: 'Glitch',
     min: 0,
     max: 100,
-    default: 0,
+    default: 100,
     unit: '%',
     section: 'glitch',
   },
@@ -150,6 +153,22 @@ export const PARAMS: ParamDef[] = [
     section: 'glitch',
     toggle: true,
   },
+  // ステップ 0..15（16分・1小節）。値=タイプ enum（0=Dry,1=Repeat,2=Freeze,3=Reverse,4=Random）。
+  // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–238。
+  ...Array.from(
+    { length: 16 },
+    (_, i): ParamDef => ({
+      id: 223 + i,
+      name: `step${i}`,
+      label: `Step ${i + 1}`,
+      min: 0,
+      max: 4,
+      default: 0,
+      unit: '',
+      section: 'glitch',
+      grid: true,
+    }),
+  ),
   // --- 帯域（エフェクトをかける周波数の選択。全エフェクト一括） ---
   {
     id: 213,
@@ -217,7 +236,7 @@ export const PARAMS: ParamDef[] = [
     section: 'master',
     toggle: true,
   },
-  // --- 内部（UI/useParam なし。App が transport.tempo を流し込む） ---
+  // --- 内部（UI/useParam なし。App が transport から流し込む） ---
   {
     id: 209,
     name: 'bpm',
@@ -225,6 +244,18 @@ export const PARAMS: ParamDef[] = [
     min: 20,
     max: 999,
     default: 120,
+    unit: '',
+    section: 'master',
+    hidden: true,
+  },
+  // 小節内の位相 0..1（App が positionSamples mod 小節長 から算出）。Glitch のステップ拍ロック用。
+  {
+    id: 239,
+    name: 'glitchPhase',
+    label: 'Glitch Phase',
+    min: 0,
+    max: 1,
+    default: 0,
     unit: '',
     section: 'master',
     hidden: true,

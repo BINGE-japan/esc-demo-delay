@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createDawInput, runtime, useParam, useTransport } from '@suara/sdk'
 import type { ParamHandle } from '@suara/sdk'
 import SuaraHostPanel from '@suara/sdk/helper/SuaraHostPanel.vue'
+import StepGrid from './components/StepGrid.vue'
 import { PARAMS } from './audio/worklets/params'
 import type { ParamDef, ParamSection } from './audio/worklets/params'
 
@@ -34,10 +35,15 @@ const SECTIONS: { key: ParamSection; title: string }[] = [
   { key: 'band', title: 'Band (Focus)' },
   { key: 'master', title: 'Master' },
 ]
+// grid param（ステップ）は自動スライダから除外＝専用 StepGrid が描画。
 const grouped = SECTIONS.map((s) => ({
   ...s,
-  items: uiParams.filter((u) => u.def.section === s.key),
+  items: uiParams.filter((u) => u.def.section === s.key && !u.def.grid),
 }))
+
+// ステップシーケンサ: 16 ステップのハンドル（PARAMS 順 = step0..15）と再生中ステップ。
+const stepHandles = uiParams.filter((u) => u.def.grid).map((u) => u.handle)
+const currentStep = ref(0)
 
 let ctx: AudioContext | null = null
 let node: AudioWorkletNode | null = null
@@ -114,18 +120,51 @@ function toggle(u: ParamUI): void {
   u.handle.end()
 }
 
+// --- ステップ拍ロック: 小節内位相 glitchPhase(0..1) を transport から worklet へ ---
+// VST=positionSamples(DAW 再生位置) / Web=ctx.currentTime 相対。再生中だけ rAF 更新（停止中はホールド）。
+// 4/4 前提（v1）。worklet 側はこの位相にサンプル精度で同期し、大ドリフトだけスナップ。
+let phaseRaf = 0
+let webStart = 0
+function pumpPhase(): void {
+  phaseRaf = 0
+  if (!ctx || !playing.value) return
+  const tempo = transport.state.tempo || 120
+  const secPerBar = (60 / tempo) * 4
+  const posSec =
+    runtime.isVst && transport.state.positionSamples > 0
+      ? transport.state.positionSamples / ctx.sampleRate
+      : ctx.currentTime - webStart
+  let phase = (posSec % secPerBar) / secPerBar
+  if (phase < 0) phase += 1
+  applyParam('glitchPhase', phase)
+  currentStep.value = Math.min(15, Math.floor(phase * 16))
+  phaseRaf = requestAnimationFrame(pumpPhase)
+}
+function startPhasePump(): void {
+  if (phaseRaf || !ctx) return
+  webStart = ctx.currentTime
+  phaseRaf = requestAnimationFrame(pumpPhase)
+}
+function stopPhasePump(): void {
+  if (phaseRaf) cancelAnimationFrame(phaseRaf)
+  phaseRaf = 0
+}
+
 async function play() {
   if (!ctx) await buildGraph()
   await ctx?.resume()
   playing.value = true
+  startPhasePump()
 }
 
 async function stop() {
   if (ctx && ctx.state === 'running') await ctx.suspend()
   playing.value = false
+  stopPhasePump()
 }
 
 async function teardown() {
+  stopPhasePump()
   source?.disconnect()
   node?.disconnect()
   if (ctx && ctx.state !== 'closed') await ctx.close()
@@ -218,6 +257,9 @@ onBeforeUnmount(teardown)
             <span class="tabular-nums">{{ fmt(u.def, u.handle.value) }}</span>
           </button>
         </template>
+
+        <!-- グリッチ・ステップシーケンサ（横=16分ステップ / 縦=タイプ）。仮UI、後で整形。 -->
+        <StepGrid v-if="g.key === 'glitch'" :steps="stepHandles" :current="currentStep" />
       </section>
     </div>
 

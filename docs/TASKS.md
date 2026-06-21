@@ -105,9 +105,22 @@
 - [x] `vp check` / `vp build` 通過
 - [~] 試聴: **Comp ON** で素材のダイナミクスレンジが圧縮（サステインのレベル感は一定）/ **Comp OFF** で保持、を A/B。Drive スイープで両モード音量一定。圧縮量は Drive・`ENV_*_SLOW_MS` で調整（**要試聴**）
 
+## Phase 2.11 — Glitch ステップシーケンサ（実装済・要試聴）
+
+> 壁打ちで確定（[DECISIONS.md](./DECISIONS.md) 2026-06-21）。横=16分ステップ(1小節)/縦=タイプ・BPM拍ロック・再現性。
+
+- [x] `params.ts`: step0..15=223–238（`grid` フラグ・enum 0..4）、glitchPhase=239(hidden)、Glitch(204) 既定 0→100
+- [x] `dsp/glitch.ts` 全面改修: 履歴リング(`HISTORY_MS`=2000)・ステップディスパッチ・5タイプ（Dry/Repeat/Freeze/Reverse/Random）・wet/fill・境界フェード
+- [x] 拍同期: App が positionSamples(VST)/ctx.currentTime(Web) → glitchPhase(0..1)、worklet は自走＋大ドリフトのみスナップ（サンプル精度・ジッタ耐性）
+- [x] `distortion.ts`: step×16 を Int32Array に読み・glitchPhase 受け渡し
+- [x] `src/components/StepGrid.vue`（16列×5行・列択一・最下段Dry・再生中ハイライト）＋ App 配線（grid をスライダから除外）
+- [x] `vp check`(22 files) / `vp build` 通過
+- [~] **試聴（DSP先行の核）**: パターン置いて (a)16分位置で発火 (b)再生し直しで同一＝再現性 (c)Random も決定論 (d)境界クリック無し。テンポスイープで拍ロック。各タイプの質感・`HISTORY_MS`/`REPEAT_SUBDIV`/`FREEZE_GRAIN_MS` を耳調整（**要試聴**）
+- [ ] 音が決まったら **StepGrid UI を整形**（Tailwind・ハイライト・ラベル）＝DSP確定後
+- [ ] 後日: 完全ランダムトグル / Tape-stop / per-step probability / 4/4 以外（timeSig を worklet へ）
+
 ### 次の DSP 強化（予定）
 
-- [ ] グリッチ強化（BPM同期 / Reverse / Ratchet / Tape-stop / Bitcrush 等）
 - [ ] ピッチ強化（固定シフト / ハーモナイザ / ピッチダイブ / サブオクターブ 等）
 
 ## Phase 3 — オーバーサンプリング

@@ -365,4 +365,17 @@
 **影響**: `dsp/saturation.ts`（`COMP_TRIM_DB=5`/`COMP_TRIM_FULL_DB=12` ＋ Comp ON 時のゲート付きトリム）。DSP §2・SPEC §4 を更新。`params.ts`/`distortion.ts`/`weighting.ts` 不変。
 **学び**: 圧縮（ピーク頭打ち）は必然的に RMS を下げる。「圧縮しつつレベル維持」＝コンプの makeup gain が要る。厳密自動は出力測定（=lag/pump の元）に戻るので、**クリップ量ゲート付きの一律トリム**で feed-forward・即時・低 Drive 中立を満たす近似が良い落としどころ。
 
+### 2026-06-21 — Glitch をBPM同期ステップシーケンサに（拍ロック・再現性）
+
+ユーザー要望:「手打ちは面倒だがランダムっぽいグリッチが欲しい、しかし再生し直しても**同じ箇所で同じグリッチ**＝再現性。BPM準拠で拍にロックしたアクセント。完全ランダムは後。**横=拍/縦=タイプのマス目UI**」。壁打ちで仕様確定。
+
+- **設計**: 1小節 × **16ステップ（16分・4/4 v1）**。各ステップに type 択一: **0=Dry / 1=Repeat(ラチェット) / 2=Freeze / 3=Reverse / 4=Random**（Gate は Random 内に内包、Tape-stop は後日）。パターンはループ＝**本質的に再現性**。Random は既存シード付き stutter/gate＝"ランダム質感だが決定論"、置く場所は選べる。**完全ランダムトグルは後日**（グリッド無視で確率ばら撒き）。
+- **拍ロック=曲タイムライン**: App が `positionSamples`(VST) / `ctx.currentTime`(Web) から **小節内位相 glitchPhase(0..1)** を算出し隠し param で worklet へ。worklet は `localBarPos` をサンプル精度で自走し、**大ドリフト（シーク/ループ/再生開始）だけスナップ**＝rAF ジッタを音に入れない。Web は再生位置が無いので再生開始基準（worklet コードは共通）。
+- **DSP**(`dsp/glitch.ts` 改修): ch毎の履歴リング(`HISTORY_MS=2000`≈768KB stereo@48k)を全サンプル書込。Repeat/Freeze/Reverse はそこからグレイン読み。境界・スナップは `FADE_MS` フェード。`Glitch(204)`=全体 wet（既定 **0→100**、空グリッド=全Dryなら透過なので安全）、`Spectral Fill(212)`=Random gate の質感。
+- **パラメータ**: step0..15 = **id 223–238**（enum 0..4、`grid:true`）、`glitchPhase`= **id 239**(hidden)。`ParamDef` に **`grid?` フラグ**新設＝useParam ハンドルは作るが自動スライダ UI には出さず `StepGrid.vue` が描画。16ステップ=16自動化レーン（VST）は許容（プリセット復元・自動化が無料＝既存 AudioParam 方針と整合）。
+- **UI**: `src/components/StepGrid.vue`（16列×5行・列択一・最下段 Dry・再生中ステップをハイライト）。まず仮UI、整形は後（DSP先行）。
+
+**影響**: `dsp/glitch.ts` 全面改修、`params.ts`(step×16+glitchPhase+`grid`+Glitch default)、`distortion.ts`(step 配列+phase 受け渡し)、`App.vue`(phase pump+grid 振り分け+StepGrid)、`src/components/StepGrid.vue` 新規。SPEC §2,4,6 / DSP §1,3 / ARCHITECTURE §2,4,5 / TASKS Phase 2.11 を更新。`vp check`(22 files)/`vp build` 通過。
+**学び**: 「ランダム感×再現性×非手打ち×おいしい箇所」は**短いループ・パターン＋拍ロック＋"Random"を1タイプ化**で同時解決。曲位置同期は **App が 0..1 位相を計算→worklet 自走＋大ズレのみスナップ**で float 精度/ジッタ/レイテンシ非申告を回避（出力は測らない）。非スカラ配列は **ステップ毎スカラ AudioParam** が既存ブリッジに最も素直。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。
