@@ -4,7 +4,7 @@
 // 内部16分（1スロット=SLOT_W px、8分=2スロット）。空をクリック=16分セル作成（デフォ最短）、
 // セルを左右どちらにドラッグでも16分スナップで伸縮（掴んだ反対端を固定）、セルをクリック(無移動)で消去。
 // 行: Dive(モディファイア・sky) / Rpt/Rev/Frz/Glt(ベース・排他・emerald) / Mute(最下段・rose・排他)。
-// Random ボタン=シードからセルをランダム生成（押すたびに別配置）/ Clear=全消去。
+// Random/▶=シード前進で別配置・◀=前のシードに戻る（#seed 表示）/ Clear=全消去。VST はキー入力不可でボタンのみ。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
 import { STEPS_PER_BAR, MAX_BARS, clampBars } from '../audio/worklets/params'
@@ -162,29 +162,31 @@ function setBars(n: number): void {
 }
 
 // --- ランダム生成 / クリア ---
+// seed は ◀ / ▶ / Random で増減（VST はキー入力が runtime に取られ DOM 入力不可のためボタンのみ）。
 const seed = ref(1)
 const RND_BASE_DENSITY = 0.3 // ベースのラン開始確率（16分毎）
-const RND_DIVE_DENSITY = 0.15 // Dive ラン開始確率
-const RND_MUTE_SINGLE = 0.85 // Mute が単発(1セル=16分)になる確率
+const RND_DIVE_DENSITY = 0.04 // Dive ラン開始確率（控えめ＝被覆 ~11%）
+const RND_DIVE_TWO = 0.6 // Dive 長が8分(2セル)になる確率（残りはランダム長）
+const RND_DIVE_MAX_EXT = 4 // Dive 伸長時の追加幅（残りは 3-6 セル）
+const RND_GLITCH_EXTRA = 0.2 // 空セルに単発16分 Glitch を追加で撒く確率（他は保ちつつ Glitch 多め）
 // 決定論ハッシュ [0,1)（seed と index から）。
 function hash(a: number, b: number): number {
   let t = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) >>> 0
   t = Math.imul(t ^ (t >>> 13), 1274126177) >>> 0
   return ((t ^ (t >>> 16)) >>> 0) / 4294967296
 }
-// 重み付きベース型抽選: Glt/Frz/Rev/Rpt 各2、Mute 3（やや出やすく）。
+// 重み付きベース型抽選: Glt/Frz/Rev/Rpt 各2、Mute 6（多め）。total 14。
 function pickBase(r: number): number {
-  const x = r * 11
+  const x = r * 14
   if (x < 2) return 1 // Glitch
   if (x < 4) return 2 // Freeze
   if (x < 6) return 3 // Reverse
-  if (x < 9) return MUTE // 4（重み3）
+  if (x < 12) return MUTE // 4（重み6）
   return 5 // Repeat
 }
-// 現在の小節範囲をシードからランダムに埋める（押すたびに seed 前進＝別配置）。範囲外は 0。
-// ベースはラン単位（Mute は単発16分寄り / 他は1-3セル）。Dive は 2個以上(8分+)のランで重ねる。
-function randomize(): void {
-  seed.value = (seed.value + 1) | 0
+// seed.value から現在の小節範囲を埋める（インクリメントしない＝同じシードで同じ配置を再現）。範囲外は 0。
+// ベースはラン単位（Mute は必ず単発16分＝両隣を空ける / 他は1-3セル）。Dive は2個以上(8分+)のランで重ねる。
+function generate(): void {
   const sd = seed.value
   const n = slots.value
   const total = props.steps.length
@@ -194,21 +196,45 @@ function randomize(): void {
   while (s < n) {
     if (hash(sd, k++) < RND_BASE_DENSITY) {
       const base = pickBase(hash(sd, k++))
-      let len: number
-      if (base === MUTE)
-        len = hash(sd, k++) < RND_MUTE_SINGLE ? 1 : 2 // Mute=単発寄り
-      else len = 1 + Math.floor(hash(sd, k++) * 3) // 他=1-3セル
-      for (let j = 0; j < len && s < n; j++) raws[s++] = base
+      if (base === MUTE) {
+        raws[s++] = MUTE // 16分単発
+        s++ // 次セルを必ず空けて隣接 Mute を防ぐ（Mute が両サイドに来ない＝8分以上にならない）
+      } else {
+        const len = 1 + Math.floor(hash(sd, k++) * 3) // 他=1-3セル
+        for (let j = 0; j < len && s < n; j++) raws[s++] = base
+      }
     } else s++
+  }
+  // 空セルに単発16分 Glitch を追加（他タイプの割合は保ちつつ Glitch を多めに）。
+  // 隣が Glitch なら置かない＝追加 Glitch も連続させず単発16分に保つ。
+  for (let i = 0; i < n; i++) {
+    if ((raws[i] & BASE_MASK) !== 0) continue // 空セルのみ
+    if (hash(sd, k++) >= RND_GLITCH_EXTRA) continue
+    if (i > 0 && (raws[i - 1] & BASE_MASK) === 1) continue // 左隣が Glitch
+    if (i < n - 1 && (raws[i + 1] & BASE_MASK) === 1) continue // 右隣が Glitch
+    raws[i] = 1 // Glitch
   }
   s = 0
   while (s < n) {
     if (hash(sd, k++) < RND_DIVE_DENSITY) {
-      const len = 2 + Math.floor(hash(sd, k++) * 3) // 2-4セル（8分以上）
+      let len = 2 // 8分(2セル)が最頻
+      if (hash(sd, k++) >= RND_DIVE_TWO) len = 3 + Math.floor(hash(sd, k++) * RND_DIVE_MAX_EXT) // 残り=ランダム長(3-6)
       for (let j = 0; j < len && s < n; j++) raws[s++] |= DIVE_BIT
     } else s++
   }
   for (let i = 0; i < total; i++) writeRaw(i, i < n ? raws[i] : 0)
+}
+// シードを確定→再生成。
+function applySeed(v: number): void {
+  seed.value = v | 0
+  generate()
+}
+// Random / ▶: シードを前進。◀: 後退（直前のランダムに戻る）。
+function randomize(): void {
+  applySeed(seed.value + 1)
+}
+function prevSeed(): void {
+  applySeed(seed.value - 1)
 }
 function clearAll(): void {
   for (let s = 0; s < props.steps.length; s++) writeRaw(s, 0)
@@ -250,7 +276,23 @@ function rowColor(row: Row): string {
         >
           Random
         </button>
-        <span class="tabular-nums text-[9px] text-neutral-500">#{{ seed }}</span>
+        <button
+          type="button"
+          title="前のシードに戻る"
+          class="rounded-[2px] bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 transition-colors hover:bg-neutral-700"
+          @click="prevSeed"
+        >
+          ◀
+        </button>
+        <span class="w-10 text-center text-[9px] tabular-nums text-neutral-400">#{{ seed }}</span>
+        <button
+          type="button"
+          title="次のシードへ"
+          class="rounded-[2px] bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 transition-colors hover:bg-neutral-700"
+          @click="randomize"
+        >
+          ▶
+        </button>
         <button
           type="button"
           class="rounded-[2px] bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-400 transition-colors hover:bg-neutral-700"
