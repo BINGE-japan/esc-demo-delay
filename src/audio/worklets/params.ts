@@ -138,6 +138,7 @@ export const PARAMS: ParamDef[] = [
       gridRole: 'step',
     }),
   ),
+  // Freeze Ice Reverb(FDN) の係数は耳で確定し glitch.ts に定数化（旧デバッグ param 291-295 は撤去・2026-06-21）。
   // --- 帯域（エフェクトをかける周波数の選択。全エフェクト一括） ---
   {
     id: 213,

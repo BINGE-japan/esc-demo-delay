@@ -138,6 +138,8 @@
 ### 次の DSP 強化（予定）
 
 - [x] ピッチ強化 → **Octave（固定ピッチ歪み＝オクターヴ・ファズ）で実装**（item6・`5fcfb3d`）。他候補（ハーモナイザ/ダイブ/サブオクターブ）は将来検討
+- [x] **Freeze Ice Reverb 化**（2026-06-21）: グラニュラー雲→FDN拡散残響で Iceverb 風“コー”（案A）。耳で確定し定数化（Decay 0.12/Diffuse 0.70/Size 0.31/Tone 0.73/Mix 0.14・デバッグ param 291-295 撤去）。**iceberg HP を 4-pole(24dB/oct)化**＝ロー残り指摘に対応。シマー(案B=オクターブ上FB)は後日（[DECISIONS.md](./DECISIONS.md) 2026-06-21・[DSP.md](./DSP.md) §3 Freeze）
+- [~] 要試聴: Iceverb の“コー”質感・低域の抜け（4-pole HP @310）を A/B。物足りなければ HP カットオフ↑やシマー追加を検討
 
 ## Phase 3 — オーバーサンプリング
 

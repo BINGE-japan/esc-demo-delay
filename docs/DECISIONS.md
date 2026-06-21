@@ -600,4 +600,26 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `params.ts`（206/216/222 削除）・`distortion.ts`（satMix/bandGain/mute 削除・comp 固定 true）・`App.vue`（band Hz を BandRange へ）・新規 `BandRange.vue`。SPEC §2/§4/§5/§6・DSP §1/§2/§2b・ARCHITECTURE §4/§5/§2 を更新。206/216/222 は **欠番**（VST tag 再利用しない）。`vp check`(23)/`vp build` 通過。
 **学び**: 「常時 ON 化」は param を消すだけでなく **worklet のクロスフェード段（mix 平滑）も撤去**して初めて簡素になる（dead path を残さない）。N本スライダ→1本2 thumb は、トラック1枚に pointer を集約し**近い thumb を掴む**方式が最小で堅牢（StepGrid と同じ clientX→正規化）。
 
+### 2026-06-21 — Freeze を Ice Reverb（FDN拡散残響）化（Iceverb 風“コー”・デバッグ param 付き）
+
+**決定**: Freeze のグラニュラー雲（凍結域の窓化グレイン）を**そのまま励起源**に、後段へ **FDN 拡散残響**を追加して Guitar Rig「Iceverb」風の“コー”を作る。リサーチの **案A（FDN残響）** を採用（[[freeze-ice-reverb-research]]・シマー(案B)は後日）。
+
+- **構成**: `グラニュラー雲(src) → 入力 allpass×2(ディフュージョン) → 4ライン FDN(Hadamard 直交FB・各FBに 1-pole damping) → Mix で src とブレンド → iceberg HP(310Hz)`。`glitch.ts` に `FreezeVerb` クラスを追加（Freeze ブロック中のみ per-sample 駆動・凍結スナップごとに `reset`）。
+- **安定性**: Hadamard 4×4×0.5 は直交（‖=1）＝FB ゲイン `< FV_FB_MAX(0.97)` で BIBO 安定。damping LP も ‖≤1。励起は有界 ⇒ 出力有界（NaN/発散なし）。
+- **デバッグ param（暫定 291-295・section=glitch）**: `Frz Decay`(FBゲイン=テール長) / `Frz Diffuse`(allpass係数) / `Frz Size`(ライン長スケール・小=金属的) / `Frz Tone`(damping・高=高域残す=氷) / `Frz Mix`(雲⇄残響)。0..100→0..1 で `distortion.ts`→`glitch.process(...,fv)` に渡す。**耳で詰めたら定数化して param は撤去**（Pitch/Dive と同じ debug→bake 運用）。
+
+**理由**: 現 Freeze（グラニュラー雲のみ）は「ザラついたパッド」で、Iceverb の**拡散残響感・氷/金属の煌めき**が無い。FFT 不使用・既存 delay/allpass/comb 部品で組める案A が最短かつ worklet 負荷も現実的（worklet 13.7→16.2kB）。シマー(オクターブ上FB)は効果大だがスコープ増のため次段。
+**影響**: `dsp/glitch.ts`（`FreezeVerb` 追加・Freeze 分岐・snapshot reset・process 引数 `fv`）/ `params.ts`（291-295 追加）/ `distortion.ts`（読み出し＋受け渡し）。docs SPEC §4・DSP §3 Freeze・ARCHITECTURE §2/§5・TASKS 更新。`vp check`(23)/`vp build` 通過。**未コミット＝耳で試聴→定数化してからコミット予定**。
+**学び**: FDN は Hadamard（直交）＋FBゲイン<1 で安定が保証できる＝設計が読める。Size でライン長を変えると金属⇄ルームを連続で振れる。debug param は「定数化したら撤去」を最初から DECISIONS/SPEC に明記して暫定だと分かるようにする。
+
+### 2026-06-21 — Freeze Ice Reverb 定数化 ＋ iceberg HP を 4-pole 化（ロー残り対応）
+
+**決定**: 直前の Freeze Ice Reverb（FDN）を耳で確定し**定数化**。ユーザー試聴値 `Frz Decay 12% / Diffuse 70% / Size 31% / Tone 73% / Mix 14%` を `glitch.ts` 定数 `FV_DECAY=0.12 / FV_DIFFUSE=0.70 / FV_SIZE=0.31 / FV_TONE=0.73 / FREEZE_VERB_MIX=0.14` に焼き込み、**デバッグ param 291-295 を撤去**（`FreezeVerbParams` interface・process の `fv` 引数も削除＝署名を `(io,steps,glitchPhase,bpm,randomMode,bars)` に戻す）。FreezeVerb は constructor で `setParams` を一度呼ぶ固定係数。
+
+- **iceberg HP を 2-pole(12dB/oct)→4-pole(24dB/oct) に強化**: ユーザー「Freeze にローが残る」指摘。検証の結果 HP は正しく効いていた（2-pole Butterworth @310・凍結ごとリセット）が、**12dB/oct が緩く 150–300Hz が残る**のが原因。コーナー 310Hz は維持し、2-pole TPT SVF を**2 段直列**にして低域をしっかり削る（`freezeHpProcess` に b セクション state 追加・snapshot で両 state リセット）。
+
+**理由**: Iceverb の“氷”感は低域がスッと抜けていることが効く。デバッグ運用（Pitch/Dive と同じ debug→bake）どおり、値が決まったら定数化して UI を綺麗に保つ。HP はカットオフを上げるより**スロープを立てる**方が、ユーザーが選んだ 310Hz の質感を保ったまま低域だけ削れる。
+**影響**: `dsp/glitch.ts`（定数化・`fv` 引数撤去・4-pole HP・b state）/ `params.ts`（291-295 削除）/ `distortion.ts`（debug 読み出し撤去・呼び出し簡素化）。docs SPEC §4・DSP §3 Freeze・ARCHITECTURE §2/§5・TASKS 更新。**291-295 は欠番**（VST tag 再利用しない）。`vp check`(23)/`vp build` 通過。**まだローが多い/少ないなら HP カットオフ(310)を調整 or シマー(案B)追加で対応**。
+**学び**: 「HP が効いてない気がする」は多くが**スロープのゆるさ**（バグでなく次数）。コーナー据え置きで段数を増やすのが、質感を保ったまま量を増やす素直な手。debug→bake は ID を毎回 291 起点で使い回すので、撤去時に必ず欠番として記録する。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

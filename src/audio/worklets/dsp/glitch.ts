@@ -45,6 +45,24 @@ const FREEZE_HP_HZ = 310 // ハイパス カットオフ（耳で確定・固定
 const HP_K = 1.4142135623730951 // 1/Q = √2（Butterworth ダンピング）
 const LUT_SIZE = 1024 // Hann 窓 LUT 解像度
 
+// Freeze Ice Reverb（FDN拡散残響）。グラニュラー雲を励起源に Iceverb 風“コー”を作る。
+// 入力ディフュージョン(allpass×2) → 4ライン FDN(Hadamard 直交・各FBに damping LP) → wet。
+// 係数は block 毎に更新（Decay=FBゲイン / Diffuse=allpass係数 / Size=ライン長 / Tone=damping）。
+const FV_LINES = 4
+const FV_BASE_MS = [19.1, 26.7, 34.3, 41.9] // 各ライン基準遅延（相互素寄り・Size=中で）
+const FV_AP_MS = [5.3, 7.9] // 入力ディフュージョン allpass の遅延
+const FV_SIZE_MIN = 0.5 // Size=0 のライン長スケール
+const FV_SIZE_MAX = 1.6 // Size=1 のライン長スケール（最大バッファ確保もこれ基準）
+const FV_FB_MAX = 0.97 // FB ゲイン上限（Hadamard 直交 ⇒ ||≤1、<1 で BIBO 安定）
+const FV_AP_MAX = 0.75 // allpass 係数上限
+const FV_OUT = 0.5 // wet 出力トリム
+// 耳で確定した Ice Reverb 係数（2026-06-21・元デバッグ param 291-295 を定数化）。
+const FV_DECAY = 0.12 // テール長（FBゲイン）
+const FV_DIFFUSE = 0.7 // 入力ディフュージョン（allpass 係数）
+const FV_SIZE = 0.31 // ライン長スケール（小=金属的）
+const FV_TONE = 0.73 // damping（高=高域残す=氷）
+const FREEZE_VERB_MIX = 0.14 // グラニュラー雲 ⇄ FDN残響 のブレンド（残響量）
+
 // step index → [0,1) 決定論ハッシュ（Random の選択。シードで再現性）。
 function rand01(n: number): number {
   let t = (n ^ SEED) >>> 0
@@ -98,14 +116,20 @@ export class Glitch {
   private freezeSeed = 0
   private freezeCount = 0
   // Freeze ハイパス（iceberg）。2-pole TPT SVF（係数は constructor で固定算出）。ch 毎状態。
+  // iceberg HP は 4-pole(24dB/oct)＝2-pole×2 直列。a/b の2セクション状態（ch 毎）。
   private hpIc1: number[] = []
   private hpIc2: number[] = []
+  private hpIc1b: number[] = []
+  private hpIc2b: number[] = []
   private readonly hpA1: number
   private readonly hpA2: number
   private readonly hpA3: number
+  // Freeze Ice Reverb（FDN）。Freeze の wet を Iceverb 風“コー”にする残響。
+  private readonly fverb: FreezeVerb
 
   constructor(sr: number) {
     this.sr = sr
+    this.fverb = new FreezeVerb(sr)
     this.historyLen = Math.max(1, Math.round((HISTORY_MS / 1000) * sr))
     this.holdSamples = Math.max(1, Math.round((HOLD_MS / 1000) * sr))
     this.diveBufLen = Math.max(8, Math.floor(this.historyLen / 2) + 8) // diveDelay(≤maxGrain) を収容
@@ -151,7 +175,11 @@ export class Glitch {
     while (this.hpIc1.length < n) {
       this.hpIc1.push(0)
       this.hpIc2.push(0)
+      this.hpIc1b.push(0)
+      this.hpIc2b.push(0)
     }
+    // Freeze Ice Reverb: バッファを ch 分確保（係数は固定＝FreezeVerb の constructor で設定済み）。
+    this.fverb.ensure(n)
 
     // 停止検出: glitchPhase が一定時間更新されない＝再生停止/タブ非アクティブ(rAF 停止)。
     // その間は glitch を素通り＝自走ループが stale 履歴を持続音化する（ビーー）のを防ぐ。
@@ -313,7 +341,10 @@ export class Glitch {
         } else if (type === TYPE_DRY) {
           out = dry
         } else if (type === TYPE_FREEZE) {
-          const frz = this.freezeHpProcess(ch, this.freezeRead(ch) * FREEZE_GAIN)
+          // グラニュラー雲（励起源）→ FDN残響 → Mix でブレンド → iceberg HP。
+          const src = this.freezeRead(ch) * FREEZE_GAIN
+          const rev = this.fverb.process(ch, src)
+          const frz = this.freezeHpProcess(ch, src * (1 - FREEZE_VERB_MIX) + rev * FREEZE_VERB_MIX)
           out = dry * (1 - wet) + frz * wet
         } else if (type === TYPE_MUTE) {
           out = dry * (1 - gateWet) + dry * gateGain * gateWet // 中央=無音・両端フェード
@@ -390,11 +421,14 @@ export class Glitch {
       // iceberg HP を初期化＝Freeze 再開ごとに無入力状態から始める（onset クリック回避）
       this.hpIc1[ch] = 0
       this.hpIc2[ch] = 0
+      this.hpIc1b[ch] = 0
+      this.hpIc2b[ch] = 0
     }
     for (let v = 0; v < FREEZE_VOICES; v++) this.vPos[v] = -1
     this.freezeTimer = 0
     this.freezeSeed = stepIdx
     this.freezeCount = 0
+    this.fverb.reset(n) // 残響テールを引きずらない（凍結ごとにクリーンスタート）
   }
 
   // 空きボイスに新グレインを割り当て（読み位置を中央±ジッタで決定論抽選）。空きが無ければ false。
@@ -436,13 +470,137 @@ export class Glitch {
     return acc / (wsum > floor ? wsum : floor)
   }
 
-  // Freeze 用 2-pole ハイパス（TPT SVF・ch 毎状態）。低域を落として iceberg 風に。
+  // Freeze 用 4-pole(24dB/oct) ハイパス＝2-pole Butterworth TPT SVF×2 直列（ch 毎状態）。
+  // 12dB/oct ではローが残る指摘→ 310Hz コーナーのまま低域をしっかり落とす（iceberg）。
   private freezeHpProcess(ch: number, x: number): number {
-    const v3 = x - this.hpIc2[ch]
-    const v1 = this.hpA1 * this.hpIc1[ch] + this.hpA2 * v3
-    const v2 = this.hpIc2[ch] + this.hpA2 * this.hpIc1[ch] + this.hpA3 * v3
+    let v3 = x - this.hpIc2[ch]
+    let v1 = this.hpA1 * this.hpIc1[ch] + this.hpA2 * v3
+    let v2 = this.hpIc2[ch] + this.hpA2 * this.hpIc1[ch] + this.hpA3 * v3
     this.hpIc1[ch] = 2 * v1 - this.hpIc1[ch]
     this.hpIc2[ch] = 2 * v2 - this.hpIc2[ch]
-    return x - HP_K * v1 - v2
+    const y1 = x - HP_K * v1 - v2
+    v3 = y1 - this.hpIc2b[ch]
+    v1 = this.hpA1 * this.hpIc1b[ch] + this.hpA2 * v3
+    v2 = this.hpIc2b[ch] + this.hpA2 * this.hpIc1b[ch] + this.hpA3 * v3
+    this.hpIc1b[ch] = 2 * v1 - this.hpIc1b[ch]
+    this.hpIc2b[ch] = 2 * v2 - this.hpIc2b[ch]
+    return y1 - HP_K * v1 - v2
+  }
+}
+
+// Freeze Ice Reverb（FDN 拡散残響）。励起源（グラニュラー雲）を入れると Iceverb 風の“コー”を返す。
+// 入力ディフュージョン(Schroeder allpass×2) → 4ライン FDN（Hadamard 直交フィードバック・各FBに
+// 1-pole damping）。Hadamard は直交＝||=1 なので FB ゲイン<1 で BIBO 安定。係数は block 毎に更新。
+class FreezeVerb {
+  private readonly sr: number
+  private readonly maxLen: number[] // 各ライン最大バッファ長（Size_MAX 基準）
+  private readonly apLen: number[] // allpass 遅延長
+  private dl: Float32Array[][] = [] // [ch][line] ディレイのリングバッファ
+  private dlPos: Int32Array[] = [] // [ch] 各ラインの write 位置
+  private apBuf: Float32Array[][] = [] // [ch][ap] allpass のリングバッファ
+  private apPos: Int32Array[] = [] // [ch] 各 allpass の位置
+  private lp: Float32Array[] = [] // [ch] 各ライン damping LP 状態
+  private readonly len: Int32Array // 現在のライン長（Size 反映・int）
+  private g = 0.8 // FB ゲイン（Decay）
+  private apG = 0.6 // allpass 係数（Diffuse）
+  private dampC = 0.8 // damping LP 係数（Tone。1=高域残す/氷, 小=暗い）
+
+  constructor(sr: number) {
+    this.sr = sr
+    this.maxLen = FV_BASE_MS.map((ms) =>
+      Math.max(4, Math.round((ms / 1000) * sr * FV_SIZE_MAX) + 4),
+    )
+    this.apLen = FV_AP_MS.map((ms) => Math.max(2, Math.round((ms / 1000) * sr)))
+    this.len = new Int32Array(FV_LINES)
+    for (let k = 0; k < FV_LINES; k++) this.len[k] = Math.round((FV_BASE_MS[k] / 1000) * sr)
+    this.setParams(FV_DECAY, FV_DIFFUSE, FV_SIZE, FV_TONE) // 固定係数（耳で確定 2026-06-21）
+  }
+
+  // ch 分のバッファを確保（lazy）。
+  ensure(n: number): void {
+    while (this.dl.length < n) {
+      this.dl.push(this.maxLen.map((L) => new Float32Array(L)))
+      this.dlPos.push(new Int32Array(FV_LINES))
+      this.apBuf.push(this.apLen.map((L) => new Float32Array(L)))
+      this.apPos.push(new Int32Array(FV_AP_MS.length))
+      this.lp.push(new Float32Array(FV_LINES))
+    }
+  }
+
+  // block 毎: 0..1 のデバッグ値から係数を更新。
+  setParams(decay: number, diffuse: number, size: number, tone: number): void {
+    const cl = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v)
+    this.g = cl(decay) * FV_FB_MAX
+    this.apG = cl(diffuse) * FV_AP_MAX
+    const sc = FV_SIZE_MIN + (FV_SIZE_MAX - FV_SIZE_MIN) * cl(size)
+    for (let k = 0; k < FV_LINES; k++) {
+      let L = Math.round((FV_BASE_MS[k] / 1000) * this.sr * sc)
+      if (L < 2) L = 2
+      else if (L > this.maxLen[k] - 1) L = this.maxLen[k] - 1
+      this.len[k] = L
+    }
+    this.dampC = 0.05 + 0.95 * cl(tone) // 高=高域を残す（明るい/氷）/ 低=高域減衰（暗い）
+  }
+
+  // 凍結スナップ毎にリセット（前テールを引きずらない）。
+  reset(n: number): void {
+    this.ensure(n)
+    for (let ch = 0; ch < n; ch++) {
+      for (let k = 0; k < FV_LINES; k++) {
+        this.dl[ch][k].fill(0)
+        this.dlPos[ch][k] = 0
+        this.lp[ch][k] = 0
+      }
+      for (let a = 0; a < FV_AP_MS.length; a++) {
+        this.apBuf[ch][a].fill(0)
+        this.apPos[ch][a] = 0
+      }
+    }
+  }
+
+  // 1 サンプル処理。x=励起（グラニュラー雲）。返り=残響 wet。
+  process(ch: number, x: number): number {
+    // 入力ディフュージョン（直列 Schroeder allpass×2）
+    let s = x
+    for (let a = 0; a < FV_AP_MS.length; a++) {
+      const buf = this.apBuf[ch][a]
+      const L = this.apLen[a]
+      let p = this.apPos[ch][a]
+      const d = buf[p]
+      const y = -this.apG * s + d
+      buf[p] = s + this.apG * y
+      p++
+      if (p >= L) p = 0
+      this.apPos[ch][a] = p
+      s = y
+    }
+    // FDN: 各ライン遅延読み → 1-pole damping LP
+    const dl = this.dl[ch]
+    const pos = this.dlPos[ch]
+    const lp = this.lp[ch]
+    const c = this.dampC
+    lp[0] += c * (dl[0][mod(pos[0] - this.len[0], this.maxLen[0])] - lp[0])
+    lp[1] += c * (dl[1][mod(pos[1] - this.len[1], this.maxLen[1])] - lp[1])
+    lp[2] += c * (dl[2][mod(pos[2] - this.len[2], this.maxLen[2])] - lp[2])
+    lp[3] += c * (dl[3][mod(pos[3] - this.len[3], this.maxLen[3])] - lp[3])
+    const r0 = lp[0]
+    const r1 = lp[1]
+    const r2 = lp[2]
+    const r3 = lp[3]
+    // Hadamard 4×4 × 0.5（直交＝エネルギー保存）でフィードバックを混ぜる
+    const m0 = 0.5 * (r0 + r1 + r2 + r3)
+    const m1 = 0.5 * (r0 - r1 + r2 - r3)
+    const m2 = 0.5 * (r0 + r1 - r2 - r3)
+    const m3 = 0.5 * (r0 - r1 - r2 + r3)
+    const g = this.g
+    dl[0][pos[0]] = s + g * m0
+    dl[1][pos[1]] = s + g * m1
+    dl[2][pos[2]] = s + g * m2
+    dl[3][pos[3]] = s + g * m3
+    for (let k = 0; k < FV_LINES; k++) {
+      pos[k]++
+      if (pos[k] >= this.maxLen[k]) pos[k] = 0
+    }
+    return (r0 + r1 + r2 + r3) * FV_OUT
   }
 }
