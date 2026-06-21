@@ -69,7 +69,7 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 - **(glitchPhase)**: 内部 AudioParam。App が `positionSamples`(VST)/`ctx.currentTime`(Web) からパターン内位相(0..1・パターン長=bars×16)を算出し供給（Glitch ステップの拍ロック）。
 - **OS**: 音質設定。構造を変えるため **AudioParam でなく構築時設定**＋グラフ再構築。VST 自動化対象外。
 
-> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-202＋204(Pitch)＋213/214、トグル 206・208＋215-217＋222(Comp)＋290(Random)、Bars=288(`grid`)、**ステップ 223–286(`grid`・enum 0..6・最大64)**、内部 bpm=209・glitchPhase=287。Dive Oct=291(DEBUG・一時)。**廃止/欠番: 203・210・211=旧 Wobble / 205=旧 Auto Gain / 207=旧 Pitch On→Octave（共に撤去）/ 212=旧 Spectral Fill / 218・219・220=旧 Howl 系 / 221=実験の名残 / 239=旧 glitchPhase(287へ移設)**＝再利用しない。204 は旧 Glitch wet→Pitch に転用）。`grid` フラグ＝useParam は作るが自動スライダに出さず StepGrid が描画。値は v0.3 提案 — レビューで確定。
+> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-202＋204(Pitch)＋213/214、トグル 206・208＋215-217＋222(Comp)＋290(Random)、Bars=288(`grid`)、**ステップ 223–286(`grid`・enum 0..6・最大64)**、内部 bpm=209・glitchPhase=287。**廃止/欠番: 203・210・211=旧 Wobble / 205=旧 Auto Gain / 207=旧 Pitch On→Octave（共に撤去）/ 212=旧 Spectral Fill / 218・219・220=旧 Howl 系 / 221=実験の名残 / 239=旧 glitchPhase(287へ移設)**＝再利用しない。204 は旧 Glitch wet→Pitch に転用）。`grid` フラグ＝useParam は作るが自動スライダに出さず StepGrid が描画。値は v0.3 提案 — レビューで確定。
 
 ## 5. 信号フロー（最終形の目標）
 

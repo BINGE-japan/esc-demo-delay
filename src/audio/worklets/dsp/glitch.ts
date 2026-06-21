@@ -26,6 +26,9 @@ const TYPE_DIVE = 6 // ぎゅーん下降（セル長で diveOct オクターブ
 const HISTORY_MS = 2000 // 履歴リング（Reverse/Repeat/Freeze 用。最遅BPMの 2×幅を確保）
 const FADE_MS = 3 // 端/シームのフェード（クリック回避）
 const SNAP_TOL_MS = 50 // これ以上ズレたら再同期スナップ
+// Dive（レコードストップ）: 再生レートを 1→DIVE_END_RATE へ**線形減速**（原音→下方へ）。
+const DIVE_OCT = 1 // 降下量（オクターブ・固定）。耳で確定（2026-06-21）
+const DIVE_END_RATE = Math.pow(2, -DIVE_OCT) // 終端の再生レート（=0.5＝1オクターブ下）
 
 // Freeze（グラニュラー雲）。耳で確定した値（2026-06-21）。
 const FREEZE_GRAIN_MS = 120 // グレイン長
@@ -116,7 +119,7 @@ export class Glitch {
 
   // io を in-place。steps=最大64 ステップ enum, glitchPhase=パターン内位相(0..1), bpm,
   // randomMode=グリッド無視の決定論ランダム, bars=ループ長(1/2/4 小節)。パターン長=bars*16。
-  // diveOct=Dive タイプの降下オクターブ（セル長で -diveOct オクターブ）。
+  // Dive(タイプ6)はセル長で原音→1オクターブ下へ線形減速（レコードストップ）。
   // wet は常時フル（空セル=Dry で透過＝専用 wet ノブ不要。端フェードは内部で適用）。
   process(
     io: Float32Array[],
@@ -125,7 +128,6 @@ export class Glitch {
     bpm: number,
     randomMode: boolean,
     bars: number,
-    diveOct: number,
   ): void {
     const n = io.length
     if (n === 0) return
@@ -227,15 +229,15 @@ export class Glitch {
       const chunk = this.blockChunk
       const revLen = Math.min(this.blockLen | 0 || 1, maxGrain)
 
-      // Dive（ぎゅーん下降）: ブロック位相 p=0..1 で rate=2^(-diveOct·p)（1→2^-diveOct）。
-      // histWrite − diveDelay を読み、diveDelay を (1−rate) ずつ伸ばす＝読みが遅れ＝ピッチ降下。
+      // Dive（レコードストップ）: ブロック位相 p=0..1 で再生レートを 1→DIVE_END_RATE へ**線形減速**
+      // （原音から1オクターブ下へ・上振れなし）。histWrite − diveDelay を読み diveDelay を (1−rate) 伸長。
       let diveRate = 1
       let diveI0 = 0
       let diveFrac = 0
       if (!randomMode && type === TYPE_DIVE) {
         const dp =
           this.blockLen > 0 ? Math.min(1, (blockPhase < 0 ? 0 : blockPhase) / this.blockLen) : 0
-        diveRate = Math.pow(2, -diveOct * dp)
+        diveRate = 1 - (1 - DIVE_END_RATE) * dp
         const readPos = this.histWrite - this.diveDelay
         diveI0 = Math.floor(readPos)
         diveFrac = readPos - diveI0
