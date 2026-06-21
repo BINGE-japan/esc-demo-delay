@@ -4,6 +4,7 @@ import { createDawInput, runtime, useParam, useTransport } from '@suara/sdk'
 import type { ParamHandle } from '@suara/sdk'
 import SuaraHostPanel from '@suara/sdk/helper/SuaraHostPanel.vue'
 import StepGrid from './components/StepGrid.vue'
+import BandRange from './components/BandRange.vue'
 import { PARAMS, STEPS_PER_BAR, clampBars } from './audio/worklets/params'
 import type { ParamDef, ParamSection } from './audio/worklets/params'
 
@@ -36,10 +37,18 @@ const SECTIONS: { key: ParamSection; title: string }[] = [
   { key: 'master', title: 'Master' },
 ]
 // grid param（ステップ）は自動スライダから除外＝専用 StepGrid が描画。
+// 帯域の Hz 2本（Lo/Hi）も除外＝専用 BandRange（2ポイントの1本スライダ）が描画。
 const grouped = SECTIONS.map((s) => ({
   ...s,
-  items: uiParams.filter((u) => u.def.section === s.key && !u.def.grid),
+  items: uiParams.filter(
+    (u) => u.def.section === s.key && !u.def.grid && !(s.key === 'band' && u.def.unit === 'Hz'),
+  ),
 }))
+
+// 帯域の Lo/Hi（log・Hz）。BandRange に渡す（PARAMS の並び＝Lo, Hi）。
+const bandFreqs = uiParams.filter((u) => u.def.section === 'band' && u.def.unit === 'Hz')
+const bandLo = bandFreqs[0]
+const bandHi = bandFreqs[1]
 
 // ステップシーケンサ: ステップ群・小節数(bars)ハンドルと再生中ステップ。grid param の種別は
 // name 文字列でなく gridRole（SSoT）で判別。
@@ -229,6 +238,15 @@ onBeforeUnmount(teardown)
         :class="g.key === 'glitch' ? 'w-fit' : 'w-72'"
       >
         <p class="text-[10px] uppercase tracking-widest text-neutral-500">{{ g.title }}</p>
+
+        <!-- 帯域: Lo/Hi を2ポイントの1本スライダで（仮UI） -->
+        <BandRange
+          v-if="g.key === 'band' && bandLo && bandHi"
+          :lo="bandLo.handle"
+          :hi="bandHi.handle"
+          :min="bandLo.def.min"
+          :max="bandLo.def.max"
+        />
 
         <template v-for="u in g.items" :key="u.def.id">
           <!-- 連続パラメータ: range スライダ -->

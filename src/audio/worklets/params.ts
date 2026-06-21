@@ -65,30 +65,8 @@ export const PARAMS: ParamDef[] = [
     unit: '%',
     section: 'drive',
   },
-  {
-    id: 206,
-    name: 'satOn',
-    label: 'Drive On',
-    min: 0,
-    max: 1,
-    default: 1,
-    unit: '',
-    section: 'drive',
-    toggle: true,
-  },
-  // Comp: ON=自然圧縮（操作点追従＝遅い envelope。普通の歪み）/ OFF=ダイナミクス保持（速い envelope）。
-  // ID 222（221 は反映されなかった実験の名残のため欠番）。
-  {
-    id: 222,
-    name: 'comp',
-    label: 'Comp',
-    min: 0,
-    max: 1,
-    default: 1,
-    unit: '',
-    section: 'drive',
-    toggle: true,
-  },
+  // Drive On(206)/Comp(222) は撤去（2026-06-21）。Drive は常時 ON、Comp は常時 ON で固定。
+  // saturation.ts は comp 引数を残すが distortion.ts が常に true を渡す。
   // --- グリッチ（ステップシーケンサ：横=16分ステップ / 縦=タイプ。docs/DSP.md §3 Glitch） ---
   // Pitch: Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ（depth）。glitchPhase ロックで毎ループ同じ。
   // 旧 Glitch(204) intensity ノブを撤去し id 204 を Pitch に転用（空セル=Dry で透過するので wet 不要）。
@@ -194,17 +172,7 @@ export const PARAMS: ParamDef[] = [
     section: 'band',
     toggle: true,
   },
-  {
-    id: 216,
-    name: 'bandMute',
-    label: 'Mute',
-    min: 0,
-    max: 1,
-    default: 0,
-    unit: '',
-    section: 'band',
-    toggle: true,
-  },
+  // Band Mute(216) は撤去（2026-06-21）。帯域の試聴は Solo のみ。
   // --- マスター ---
   {
     id: 202,

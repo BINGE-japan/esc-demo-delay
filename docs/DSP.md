@@ -16,21 +16,21 @@
 ## 1. セクションと段構成
 
 4 セクション（**信号フロー順** = Band / Drive / Glitch / Master）。Pitch は Glitch 内のノブ。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
-全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo/Mute)`（§2b）。実処理順は上から下。
+全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo)`（§2b）。実処理順は上から下。
 
 | セクション | 段                 | 内容                                                                                                                             | パラメータ                                                | ユニット            |
 | ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------- |
 | **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                                           | Drive(200)                                                | `dsp/saturation.ts` |
 | 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                               | —                                                         | 〃                  |
-| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替             | Drive 連動 / Comp(222)                                    | 〃                  |
+| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp（固定ON）の遅い envelope で自然圧縮           | Drive 連動 / Comp 固定ON                                  | 〃                  |
 | 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                                     | Tone(201)                                                 | 〃                  |
 | **Pitch**  | Warp ピッチ寄れ    | 可変ディレイを glitchPhase ロックの決定論カーブで揺らす＝再現性ワウ（Glitch の後・帯域内）                                       | Pitch(204)                                                | `dsp/pitch.ts`      |
 | **Glitch** | ステップシーケンサ | ブロック(隣接)・ベース6型(Dry/Glitch/Freeze/Reverse/Mute/Repeat)＋Dive 重ねがけ＋Random モード・小節数1/2/4・BPM拍ロック・再現性 | On(217)/Random(290)/Bars(288)/Step×64(223-286)/phase(287) | `dsp/glitch.ts`     |
 | **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                             | Output(202)                                               | `distortion.ts`     |
 | Master     | Bypass             | 全体を dry へクロスフェード                                                                                                      | Bypass(208)                                               | 〃                  |
 
-- セクション ON/OFF（Drive On=206 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。Pitch(204) は depth ノブ。
-- 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215 / Mute=216）は §2b。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
+- セクション ON/OFF（Glitch On=217）・Solo(215)・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。Drive 段は常時 ON（トグル撤去 2026-06-21）。Pitch(204) は depth ノブ。
+- 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215）は §2b。Mute(216) は撤去（2026-06-21）。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
 
 ## 2. 音量を「常に一定」に（入力レベル連動フィードフォワード）⭐
 
@@ -42,7 +42,7 @@
 - **Drive makeup（知覚＝明るさ）**: クリップ倍音の**明るさ（＝ラウドネス増）**を、`Geff` で引く静的表（`dsp/weighting.ts` の重み付け）で打ち消す。
 - **Tone makeup**: Tilt の知覚ラウドネス増分を基準スペクトルから逆算して打ち消す。
 - 総合: `makeup = a · driveMakeup(Geff) · table(dB(Geff))`（per-block・k-rate）。
-- **Comp(222)**: 入力 envelope `a` の速さで**ダイナミクスの圧縮/保持**を切替（ON=遅い＝自然圧縮・既定 / OFF=速い＝保持。下記「入力レベル envelope ＋ Comp」）。音量恒常（vs Drive）は両モード維持。
+- **Comp（常時 ON で固定・トグル撤去 2026-06-21）**: 入力 envelope `a` を遅く追う＝**自然圧縮**（下記「入力レベル envelope ＋ Comp」）。音量恒常（vs Drive）は維持。`saturation.ts` は保持モード(OFF=速い envelope)の実装を残すが distortion.ts は常に ON(=true) を渡す。
 
 > 原理: クリップのラウドネス増は **入力レベル×Drive**（どれだけクリッパを叩くか）で決まる ⇒ ノブだけでは追えず、入力レベルが要る。入力（出力でなく）を見るので **Drive 操作に遅延ゼロ・出力 swell/duck なし**。**RMS 一定 ≠ 知覚音量一定** なので明るさも `Geff` 連動で引く。
 > ⚠️ 入力を正弦と見なすモデル＋基準正弦較正なので**実素材では完全一定でなく僅かな差は残る**（固定オフセット。時間的なラグ/ムラではない）。効きの調整は `WEIGHT_HIGH`/`REF_F0_HZ`。リアクティブな Loudness Match・Auto Gain(205) は**撤去済み**、look-ahead は SDK レイテンシ非申告で VST 不可（[DECISIONS.md](./DECISIONS.md) 2026-06-21）。
@@ -59,12 +59,12 @@ a = max(env, 1e-6)                        // 入力振幅推定（正弦近似�
 
 `a` は makeup 評価にのみ使う（音声には掛けない）。Drive を回しても `a` は steady ＝ makeup は driveLin で即時更新（遅延ゼロ）。
 
-**Comp(222) で envelope の速さ＝ダイナミクスの扱いを切替**:
+**Comp は常時 ON で固定（トグル撤去 2026-06-21）＝遅い envelope（自然圧縮）。** `saturation.ts` は引数で OFF=速い envelope（保持）も選べる実装を残すが、distortion.ts は常に ON を渡す:
 
 - **Comp OFF（ダイナミクス保持）= 速い**（ATK 5ms / REL 150ms）。`a` がトランジェントに追従 → makeup が各音を再レベル → クリップが潰した分を持ち上げ直す＝**出力ダイナミクス≈入力**（クリーンな粒立ち・歪んでもレンジ残る）。
 - **Comp ON（自然圧縮・既定）= 遅い**（ATK 250ms / REL 400ms）。`a` は操作点＝サステインのレベルだけ追い、**トランジェントは動かさない** → トランジェントは `clip` で頭打ち＝**ダイナミクスレンジが圧縮**（普通の歪み）。サステイン（≈a, クリップ前）は makeup=1/driveLin で入力レベル維持＝**レベル感は一定**。Drive↑で頭打ちが下がる＝圧縮が増える。
 - **Comp ON のレベル補償（ざっくり一律トリム）**: 圧縮でピークが潰れる分、Comp OFF（≒dry）より RMS が下がる。そこで Comp ON のみ `makeup` に最大 `COMP_TRIM_DB`(既定4dB・耳調整) のトリムを足して OFF/dry に近づける（＝コンプの makeup gain・密度感）。**クリップ量(操作点 Geff の dB)でゲート**し、`Geff≤0dB`（歪んでない）→0、`COMP_TRIM_FULL_DB`(=6dB) 以上→最大で**以降一定**。低 Drive では中立（bypass 近接を壊さない）。`FULL` を低く（12→6）して**早期プラトー**にし「Drive を上げるほど Comp ON が大きくなる」を抑えた（2026-06-21）。簡易近似なので素材により残差あり（耳調整: `COMP_TRIM_DB`/`COMP_TRIM_FULL_DB`）。
-- どちらも `a` は入力由来＝Drive 操作に遅延ゼロ・出力非測定（swell/duck なし）。トグル切替は coef を変えるだけ＝state 連続＝クリック無し。`ENV_*_(SLOW_)MS` は耳調整。
+- `a` は入力由来＝Drive 操作に遅延ゼロ・出力非測定（swell/duck なし）。本プラグインは ON 固定（上 OFF 記述は `saturation.ts` の保持モード実装の参考）。`ENV_*_(SLOW_)MS` は耳調整。
 
 ### Drive makeup（RMS、`dsp/saturation.ts`）
 
@@ -115,13 +115,12 @@ toneComp = 1 / sqrt(pLow*gLow² + pHigh*gHigh²)
 
 - **抜き出し**: `band = bandpass(in, lo, hi)`。**4-pole（24dB/oct）TPT SVF**（HP(lo)×2 → LP(hi)×2）。lo/hi をスイープしてもジッパー無し。「はっきり分ける」ため急峻に。
 - **残り**: `rest = in − band`（位相反転＋加算＝引き算）→ `band + rest = in` が **厳密に成立＝完全再構成**（境界に穴/コブが出ない）。
-- **適用**: `band → [Drive]→[Glitch]→[Pitch] → bandPost`（Pitch は Glitch の後＝グリッチ出力をワウ）。**全エフェクト一括**。
+- **適用**: `band → [Drive(常時)]→[Glitch]→[Pitch] → bandPost`（Pitch は Glitch の後＝グリッチ出力をワウ）。**全エフェクト一括**。
 - **合成（recombine）**:
   - Normal: `out = bandPost + rest`（帯域内=100%Wet / 帯域外=100%Dry）
-  - **Solo**(215): `out = bandPost`（選択帯域だけ試聴）
-  - **Mute**(216): `out = rest`（その帯域を抜いた残りだけ試聴）
-  - Solo/Mute はクロスフェード。両 ON は Solo 優先。
-- **基準の使い分け**: 各セクション ON/OFF（satMix 等）の dry 基準は **band-dry（bandPre）**。全体 Bypass だけ **元入力（fullDry）** 基準。
+  - **Solo**(215): `out = bandPost`（選択帯域だけ試聴＝`rest` を抜く・クロスフェード）
+  - Mute(216) は撤去（2026-06-21）。帯域の試聴は Solo のみ。
+- **基準の使い分け**: 各セクション ON/OFF（glitchMix 等）の dry 基準は **band-dry（bandPre）**。全体 Bypass だけ **元入力（fullDry）** 基準。Drive は常時 ON ＝専用 mix なし。
 - エフェクトが中立なら `bandPost = band` → `band+rest = in` で完全透過。`lo=20/hi=20k` で全帯域＝実質オフ。`lo>=hi` は通過帯域が空 → 全 dry。
 - ⚠️ 完全なブリックウォール分離は FFT/線形位相が要る（レイテンシ増）。現状は IIR 24dB/oct（必要なら将来 OS と併せ検討）。重い処理時は境界周辺に位相由来の微小アーティファクトが出うる（中立時は無し）。
 

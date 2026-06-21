@@ -130,6 +130,7 @@
 - [x] **小節数タブ(item1)**（`4475e82`）: 1/2/4 小節＝bars×16(最大64)・ループ長そのものを切替・複数小節 phase・glitchPhase 239→287
 - [x] **Pitch→Octave(item6)**（`5fcfb3d`）: Wobble 撤去→オクターヴ・ファズ(207)を歪み段の後・Glitch 前に
 - [x] **セクション順(item8)**（`7ad5a76`）: UI を信号フロー順 Band→Drive→Glitch→Master に
+- [x] **UI 整理**（2026-06-21）: Band Mute(216) 撤去（Solo のみ）/ Band Lo/Hi を**2ポイント1本スライダ**（`BandRange.vue`）/ Comp(222)・Drive On(206) を**常時ON固定**でトグル撤去（[DECISIONS.md](./DECISIONS.md) 2026-06-21）
 - [x] **レビュー反映**（`472bee3`）: Freeze HP リセット / Octave クランプ / Freeze 枯渇 hop / ブロック連続判定 / SSoT 定数化(`STEPS_PER_BAR`等) / `gridRole` 判別子
 - [~] **試聴（DSP先行）**: Freeze 滑らかさ・Octave 量感・Random モード・小節数・Drive 音量を確認し定数を耳調整（**要試聴**）
 - [ ] Octave の中身（ブレンド/補正/カットオフ）を debug param で詰める。StepGrid UI 整形（音確定後）

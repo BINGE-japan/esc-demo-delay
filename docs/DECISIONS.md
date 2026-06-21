@@ -587,4 +587,17 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `StepGrid.vue`（drag 状態を fixed/lo/hi/moved/created に・onDown/onMove/endDrag 刷新・EDGE 撤去）。SPEC §4,§6・ARCHITECTURE §2 更新。worklet 不変。
 **学び**: 小セルでの「端掴みリサイズ vs クリック消去」は px の端ゾーンでは破綻＝**move 有無でクリック/ドラッグを判別**するのが堅牢。伸縮は固定端＋min/max で左右対称に。
 
+### 2026-06-21 — UI 整理: Band Mute 撤去 / Band を2ポイント1本スライダ / Comp・Drive On を常時ON固定
+
+**決定**: ユーザー要望でトグル4種を整理。
+
+- **Band Mute(216) 撤去**: 帯域の試聴は **Solo のみ**（off=帯域+残りを合成）。worklet の recombine から `bandGain`/`bandTarget` を削除し `output += rest * restGain`（Solo で restGain→0）だけに簡素化。
+- **Band を1本スライダ＋2 thumb に**: 旧 Band Lo/Hi の2スライダ → 新コンポーネント [BandRange.vue](../src/components/BandRange.vue)（log・トラックをクリック/ドラッグで**近い側 thumb** を掴む・lo≤hi クランプ）。params は Lo=213/Hi=214 のまま（UI だけ統合）。App は band の `unit==='Hz'` を自動スライダから除外して BandRange へ委譲。
+- **Comp(222) 撤去 → 常時 ON 固定**: トグルを廃止し distortion.ts は `sat.process(..., true)`。`saturation.ts` は comp 引数（OFF=速い envelope）の実装を残すが本プラグインは ON 固定で配線（自然圧縮・既定挙動のまま）。
+- **Drive On(206) 撤去 → 常時 ON 固定**: 歪み段の ON/OFF クロスフェード（`satMix`）を削除。Drive 段は常に適用。
+
+**理由**: 「Mute いらない・Solo だけ」「帯域は2ポイントの1本スライダが直感的」「Comp は常時 ON でいい」「Drive On も不要」。いずれも UI のノイズ削減＝触る軸を絞る。挙動は既定（Comp ON・Drive ON）と同じなので音は不変、操作面だけ簡素化。
+**影響**: `params.ts`（206/216/222 削除）・`distortion.ts`（satMix/bandGain/mute 削除・comp 固定 true）・`App.vue`（band Hz を BandRange へ）・新規 `BandRange.vue`。SPEC §2/§4/§5/§6・DSP §1/§2/§2b・ARCHITECTURE §4/§5/§2 を更新。206/216/222 は **欠番**（VST tag 再利用しない）。`vp check`(23)/`vp build` 通過。
+**学び**: 「常時 ON 化」は param を消すだけでなく **worklet のクロスフェード段（mix 平滑）も撤去**して初めて簡素になる（dead path を残さない）。N本スライダ→1本2 thumb は、トラック1枚に pointer を集約し**近い thumb を掴む**方式が最小で堅牢（StepGrid と同じ clientX→正規化）。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

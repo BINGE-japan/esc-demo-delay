@@ -25,6 +25,7 @@ DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.m
 | [src/audio/worklets/dsp/pitch.ts](../src/audio/worklets/dsp/pitch.ts)           | Pitch（Vinyl Warp 風＝可変ディレイ×glitchPhase ロックの決定論ワウ）                                                         | 中       |
 | [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接・raw=ベース6型\|Dive重ね・拍ロック・Random モード）                              | 中       |
 | [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch シーケンサ UI（クリップ式・8分カラム/内部16分・クリック16分作成/左右ドラッグ伸縮/クリック消去・Dive重ね/Mute最下段） | 中       |
+| [src/components/BandRange.vue](../src/components/BandRange.vue)                 | 帯域 Lo/Hi の2ポイント1本スライダ UI（log・近い thumb を掴んで移動・lo≤hi クランプ）                                        | 中       |
 | [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                                             | 低       |
 | `docs/`                                                                         | 仕様の SSoT                                                                                                                 | 高       |
 
@@ -64,7 +65,7 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 ```
 
 - **採用**: AudioWorklet ネイティブ **AudioParam**（k-rate）。Web=ノブ / VST=automation を `useParam.value` が同じ reactive 値に正規化済みなので watch→AudioParam で両 runtime 共通。
-- トグル（各 ON / Solo / Mute / Bypass）も 0/1 の AudioParam。worklet 側でクロスフェード平滑（クリック回避）。
+- トグル（Glitch On / Solo / Bypass）も 0/1 の AudioParam。worklet 側でクロスフェード平滑（クリック回避）。Drive 段・Comp は常時 ON で固定（トグル撤去 2026-06-21）。
 - 音量の計算補正（Drive/Tone makeup）は worklet 内で完結＝ノブ値から算出する純フィードフォワード（専用パラメータなし。リアクティブな自動トリムは撤去、[DECISIONS.md](./DECISIONS.md) 2026-06-21）。
 - **bpm は例外的に transport 駆動**: hidden param（UI/useParam なし）。App が `watch(transport.state.tempo)` → `applyParam('bpm', tempo)`。Glitch が BPM グリッドで拍ロック・再現性を持つために worklet へ供給する。
 - **glitchPhase も transport 駆動**: hidden param。App が再生中 rAF で `positionSamples`(VST)/`ctx.currentTime`(Web) から**パターン内位相(0..1・パターン長=bars×16)**を算出→`applyParam('glitchPhase', …)`。worklet はこれにサンプル精度で同期し Glitch ステップを拍ロック（大ドリフトのみスナップ）。停止中はホールド。Bars は App が `barsHandle` から読んで位相計算に使う。
@@ -75,10 +76,11 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 - `useParam(id, opts)` の `id` は VST controller の `addParameter` tag と一致必須（[param.ts](../src/sdk/param.ts) 冒頭）。
 - 既存: synth `0..5` / saturator `100..102`。本プラグインは **200番台**:
   - 連続: Drive=200, Tone=201, Output=202, Pitch=204, Band Lo=213(log), Band Hi=214(log)
-  - トグル: Drive On=206, Comp=222, Bypass=208, Solo=215, Mute=216, Glitch On=217, Random=290
+  - トグル: Bypass=208, Solo=215, Glitch On=217, Random=290（Drive 段・Comp は常時 ON で固定＝トグルなし）
   - `grid`（自動スライダ外・StepGrid 描画）: Bars=288（ループ長 1/2/4 小節）/ Step 1–64 = 223–286（raw 0..13＝ベース(0Dry/1Glitch/2Freeze/3Reverse/4Mute/5Repeat)|Dive(8)。クリップ式・8分カラム/内部16分）
+  - 帯域 Lo/Hi は専用 UI [BandRange.vue](../src/components/BandRange.vue)（1本スライダ＋2 thumb）が描画。useParam ハンドルは App が生成しコンポーネントへ渡す（`grid` ではない＝自動スライダ判定は section+unit で除外）
   - 内部: bpm=209（App が `transport.tempo` を供給）/ glitchPhase=287（App がパターン内位相 0..1 を供給）。どちらも `hidden:true`・UI/useParam なし
-  - 廃止/欠番: 203・210・211＝旧 Wobble 系（2026-06-21）/ 205＝旧 Auto Gain（2026-06-21）/ 207＝旧 Pitch On→Octave（共に撤去、2026-06-21）/ 212＝旧 Spectral Fill（2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝実験の名残 / 239＝旧 glitchPhase（287 へ移設）。再利用しない（VST tag 衝突回避）。204 は旧 Glitch wet→Pitch に転用（2026-06-21）
+  - 廃止/欠番: 203・210・211＝旧 Wobble 系（2026-06-21）/ 205＝旧 Auto Gain（2026-06-21）/ 206＝旧 Drive On（常時ON化、2026-06-21）/ 207＝旧 Pitch On→Octave（共に撤去、2026-06-21）/ 212＝旧 Spectral Fill（2026-06-21）/ 216＝旧 Band Mute（撤去、2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝実験の名残 / 222＝旧 Comp（常時ON化、2026-06-21）/ 239＝旧 glitchPhase（287 へ移設）。再利用しない（VST tag 衝突回避）。204 は旧 Glitch wet→Pitch に転用（2026-06-21）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。
 
 ## 6. runtime 差分の扱い

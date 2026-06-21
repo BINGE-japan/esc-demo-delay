@@ -3,9 +3,9 @@
 // 組み立て役。実体は dsp/ の各ユニット（docs/DSP.md / docs/ARCHITECTURE.md）。
 // 帯域スプリットで「選択帯域だけにエフェクト」を実現:
 //   band = bandpass(in, lo, hi);  rest = in − band（位相反転＝引き算で完全再構成）
-//   band → [Drive]→[Glitch]→[Pitch] → bandPost
-//   out  = Normal: bandPost+rest / Solo: bandPost / Mute: rest  → Output → Bypass
-// セクション ON/OFF・Solo/Mute・Bypass はクリック回避のクロスフェードで合成。
+//   band → [Drive(常時)]→[Glitch]→[Pitch] → bandPost
+//   out  = Normal: bandPost+rest / Solo: bandPost  → Output → Bypass
+// セクション ON/OFF（Glitch）・Solo・Bypass はクリック回避のクロスフェードで合成。
 // パラメータは params.ts（SSoT）から生成（docs/ARCHITECTURE.md §4）。
 
 import { PARAMS, MAX_STEPS } from './params'
@@ -35,10 +35,8 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
   private readonly toggleCoef: number
 
   // クロスフェード用の平滑ゲイン（0..1）
-  private satMix = 1
   private glitchMix = 1
-  private bandGain = 1 // recombine: band 成分
-  private restGain = 1 // recombine: rest 成分
+  private restGain = 1 // recombine: rest 成分（Solo で 0 へ）
   private bypassMix = 0
   private readonly glitchSteps = new Int32Array(MAX_STEPS) // ステップシーケンサのパターン（最大4小節）
 
@@ -79,7 +77,6 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     // k-rate パラメータ
     const driveDb = parameters.drive[0]
     const tonePct = parameters.tone[0]
-    const comp = parameters.comp[0] >= 0.5
     const outLin = dbToLin(parameters.output[0])
     const pitchDepth = parameters.pitch[0]
     const gliRandom = parameters.glitchRandom[0] >= 0.5
@@ -93,13 +90,10 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const bpm = parameters.bpm[0]
     const bandLo = parameters.bandLo[0]
     const bandHi = parameters.bandHi[0]
-    const satTarget = parameters.satOn[0] >= 0.5 ? 1 : 0
     const glitchTarget = parameters.glitchOn[0] >= 0.5 ? 1 : 0
     const solo = parameters.bandSolo[0] >= 0.5
-    const mute = parameters.bandMute[0] >= 0.5
     const bypTarget = parameters.bypass[0] >= 0.5 ? 1 : 0
-    // Solo 優先。Solo → band のみ / Mute → rest のみ / 通常 → 両方。
-    const bandTarget = mute && !solo ? 0 : 1
+    // Solo → band のみ（rest を抜く）/ 通常 → band+rest。
     const restTarget = solo ? 0 : 1
 
     this.ensureBuf(this.fullDry, n, len)
@@ -127,16 +121,8 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
       }
     }
 
-    // === 歪み Section（output=band を in-place） ===
-    this.sat.process(output, driveDb, tonePct, comp)
-    for (let i = 0; i < len; i++) {
-      this.satMix += this.toggleCoef * (satTarget - this.satMix)
-      for (let ch = 0; ch < n; ch++) {
-        const o = output[ch]
-        const pre = this.bandPre[ch]
-        o[i] = pre[i] + (o[i] - pre[i]) * this.satMix
-      }
-    }
+    // === 歪み Section（output=band を in-place・常時 ON。Comp は常時 ON で固定） ===
+    this.sat.process(output, driveDb, tonePct, true)
 
     // 音量恒常は saturation.ts のフィードフォワード補正（Drive/Tone の makeup）で完結。
     // 出力を測って後追いで下げるリアクティブ段は持たない＝ラグ/ムラなし（DECISIONS 2026-06-21）。
@@ -156,12 +142,11 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     // === Pitch Section（Vinyl Warp 風の再現性ピッチ寄れ。depth=0 でほぼ透過） ===
     this.pit.process(output, pitchDepth, glitchPhase)
 
-    // === 帯域 recombine（+ Solo/Mute） ===
+    // === 帯域 recombine（+ Solo: rest を抜く） ===
     for (let i = 0; i < len; i++) {
-      this.bandGain += this.toggleCoef * (bandTarget - this.bandGain)
       this.restGain += this.toggleCoef * (restTarget - this.restGain)
       for (let ch = 0; ch < n; ch++) {
-        output[ch][i] = output[ch][i] * this.bandGain + this.rest[ch][i] * this.restGain
+        output[ch][i] += this.rest[ch][i] * this.restGain
       }
     }
 
