@@ -48,7 +48,6 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 | 211     | Wob Occur     | 0 〜 100     | 100  | 連続       | %    | ピッチ     | 頻度。100=常に / <100=たまに（**BPM準拠・再現性あり**）                             |
 | 207     | Pitch On      | 0 / 1        | ON   | トグル     | —    | ピッチ     | ピッチセクションの ON/OFF                                                           |
 | 204     | Glitch        | 0 〜 100     | 100  | 連続       | %    | グリッチ   | ステップシーケンサの全体 wet（intensity）                                           |
-| 212     | Spectral Fill | 0 / 1        | OFF  | トグル     | —    | グリッチ   | **Mute** ステップの無音に**スペクトル反転音**を差し込む                             |
 | 217     | Glitch On     | 0 / 1        | ON   | トグル     | —    | グリッチ   | グリッチセクションの ON/OFF                                                         |
 | 223–238 | Step 1–16     | 0 〜 8       | 0    | 連続(enum) | —    | グリッチ   | type: 0Dry/1Glitch/2Freeze/3Reverse/4Random/5Mute/6-8Repeat1-16・1-8・1-4（`grid`） |
 | 213     | Band Lo       | 20 〜 20k    | 20   | 連続(log)  | Hz   | 帯域       | エフェクトをかける下限周波数                                                        |
@@ -65,14 +64,14 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 - **Comp**: 歪みの**コンプ感**の ON/OFF。ON=入力 envelope を遅く（操作点だけ追う）→ トランジェントがクリップで頭打ち＝**ダイナミクスレンジが自然に圧縮**（普通の歪み）。OFF=envelope 速い→**ダイナミクス保持**のまま歪む（クリーンな粒立ち）。ON は圧縮で下がる分をレベル補償トリム（クリップ量ゲート）で OFF/dry に近づける。どちらも音量恒常（vs Drive）は維持（[DSP.md](./DSP.md) §2）。
 - **Tone**: 暗⇄明の **Tilt EQ**（pivot 約 800Hz、±18dB）。中央フラット。Tone でも音量は一定（Tone makeup）。
 - **Wobble**: 可変ディレイのピッチのヨレ。**Depth**（揺れ幅）/ **Wob Speed**（揺れの速さ）/ **Wob Occur**（頻度。100%=常に、下げると「たまに」＝**BPM グリッドにシード付き判定で再現性あり**）（[DSP.md](./DSP.md) 段7）。
-- **Glitch（ステップシーケンサ・ブロックモデル）**: **横=16分ステップ(1小節)/縦=タイプ**のマス目。**同一タイプの連続セル＝1ブロック（幅=その効果の継続長）**。タイプ: **Dry / Glitch(極短ラチェット) / Freeze / Reverse(幅=逆レンジ) / Random / Mute / Repeat×3(1/16・1/8・1/4)**。BPM同期・**拍ロック**（VST=曲の小節頭=ステップ1、Web=再生開始基準）でパターンがループ＝**再現性**。**Repeat の分割(1リピート長)はセルごと＝per-placement**（拍1=1/16・拍2=1/8 が両立）。`Glitch(204)`=全体 wet（空グリッド=全Dryで透過）、`Spectral Fill(212)`=Mute の無音に **(-1)ⁿ スペクトル反転**。完全ランダムトグル/Tape-stop は後日（[DSP.md](./DSP.md) §3 Glitch）。
+- **Glitch（ステップシーケンサ・ブロックモデル）**: **横=16分ステップ(1小節)/縦=タイプ**のマス目。**同一タイプの連続セル＝1ブロック（幅=その効果の継続長）**。タイプ: **Dry / Glitch(極短ラチェット) / Freeze / Reverse(幅=逆レンジ) / Random / Mute / Repeat×3(1/16・1/8・1/4)**。BPM同期・**拍ロック**（VST=曲の小節頭=ステップ1、Web=再生開始基準）でパターンがループ＝**再現性**。**Repeat の分割(1リピート長)はセルごと＝per-placement**（拍1=1/16・拍2=1/8 が両立）。`Glitch(204)`=全体 wet（空グリッド=全Dryで透過）。完全ランダムトグル/Tape-stop は後日（[DSP.md](./DSP.md) §3 Glitch）。
 - **Band（Focus）**: エフェクトをかける周波数帯を選ぶ。`band = bandpass(in, Lo, Hi)`、`rest = in − band`（完全再構成）。**帯域内=100%Wet / 帯域外=100%Dry**。**Solo**=帯域だけ試聴 / **Mute**=帯域を抜いた残りだけ試聴。全エフェクト一括（[DSP.md](./DSP.md) §2b）。
 - **Drive On / Pitch On / Glitch On / Bypass**: クリック回避のクロスフェードで切替（[DSP.md](./DSP.md) §1）。
 - **(bpm)**: 内部 AudioParam。UI/useParam は無く、App が `transport.tempo` を流し込む（Wob Occur の BPM 準拠に使用）。
 - **(glitchPhase)**: 内部 AudioParam。App が `positionSamples`(VST)/`ctx.currentTime`(Web) から小節内位相(0..1)を算出し供給（Glitch ステップの拍ロック）。
 - **OS**: 音質設定。構造を変えるため **AudioParam でなく構築時設定**＋グラフ再構築。VST 自動化対象外。
 
-> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-204＋210/211＋213/214、トグル 206-208＋212＋215-217＋222(Comp)、**ステップ 223–238(`grid`・enum 0..8)**、内部 bpm=209・glitchPhase=239。**廃止/欠番: 205=旧 Auto Gain / 218・219・220=旧 Howl 系 / 221=反映されなかった実験の名残**＝再利用しない）。`grid` フラグ＝useParam は作るが自動スライダに出さず StepGrid が描画。値は v0.3 提案 — レビューで確定。
+> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-204＋210/211＋213/214、トグル 206-208＋215-217＋222(Comp)、**ステップ 223–238(`grid`・enum 0..8)**、内部 bpm=209・glitchPhase=239。**廃止/欠番: 205=旧 Auto Gain / 212=旧 Spectral Fill / 218・219・220=旧 Howl 系 / 221=反映されなかった実験の名残**＝再利用しない）。`grid` フラグ＝useParam は作るが自動スライダに出さず StepGrid が描画。値は v0.3 提案 — レビューで確定。
 
 ## 5. 信号フロー（最終形の目標）
 

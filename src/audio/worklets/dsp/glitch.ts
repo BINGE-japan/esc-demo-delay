@@ -2,7 +2,7 @@
 // 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の長さ（継続長）**。
 // BPM同期・拍ロック・再現性（パターンがループ＝毎回同じ箇所）。docs/DSP.md §3。
 // type: 0 Dry / 1 Glitch(極短ラチェット) / 2 Freeze(グラニュラー保持) / 3 Reverse(幅=逆レンジ)
-//       / 4 Random(ステップ毎に再抽選) / 5 Mute(無音=Spectral Fill 差込)
+//       / 4 Random(ステップ毎に再抽選) / 5 Mute(無音)
 //       / 6 Repeat1/16 / 7 Repeat1/8 / 8 Repeat1/4（ビートリピート）。
 // Repeat の chunk(1リピート長)はセルの分割＝per-placement。chunk<幅 で連続ループに聞こえる。
 // Freeze: ブロック頭で直近 FREEZE_REGION_MS を凍結バッファにスナップ→重なり合う窓化グレイン
@@ -28,7 +28,6 @@ const TYPE_REP4 = 8
 const HISTORY_MS = 2000 // 履歴リング（Reverse/Repeat/Freeze 用。最遅BPMの 2×幅を確保）
 const FADE_MS = 3 // 端/シームのフェード（クリック回避）
 const SNAP_TOL_MS = 50 // これ以上ズレたら再同期スナップ
-const FILL_LEVEL = 0.7 // Mute の Spectral Fill 差し込みレベル
 
 // Freeze（グラニュラー雲）。耳で確定した値（2026-06-21）。
 const FREEZE_GRAIN_MS = 120 // グレイン長
@@ -115,12 +114,11 @@ export class Glitch {
     this.hpA3 = hpG * this.hpA2
   }
 
-  // io を in-place。amount=全体 wet(0..100), fill=Mute のスペクトル反転, steps=16 ステップ enum,
+  // io を in-place。amount=全体 wet(0..100), steps=16 ステップ enum,
   // glitchPhase=小節内位相(0..1), bpm。
   process(
     io: Float32Array[],
     amount: number,
-    fill: boolean,
     steps: Int32Array,
     glitchPhase: number,
     bpm: number,
@@ -209,7 +207,6 @@ export class Glitch {
       }
       const wet = wetAmt * edgeEnv * rGain // grain/reverse/freeze 系
       const gateWet = wetAmt * rGain // gate 系（端処理は gateGain 側）
-      const sign = (this.histWrite & 1) === 0 ? 1 : -1
       // gate ゲイン（中央=0 無音、端 fade）
       let gateGain = 0
       if (blockPhase < fade) gateGain = 1 - blockPhase / fade
@@ -244,10 +241,7 @@ export class Glitch {
           const frz = this.freezeHpProcess(ch, this.freezeRead(ch) * FREEZE_GAIN)
           out = dry * (1 - wet) + frz * wet
         } else if (type === TYPE_MUTE) {
-          const fx = fill
-            ? dry * gateGain + dry * sign * FILL_LEVEL * (1 - gateGain)
-            : dry * gateGain
-          out = dry * (1 - gateWet) + fx * gateWet
+          out = dry * (1 - gateWet) + dry * gateGain * gateWet // 中央=無音・両端フェード
         } else if (type === TYPE_RANDOM) {
           let g: number
           if (this.microKind === 1) {

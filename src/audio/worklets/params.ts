@@ -132,18 +132,6 @@ export const PARAMS: ParamDef[] = [
     section: 'glitch',
   },
   {
-    id: 212,
-    name: 'glitchFill',
-    label: 'Spectral Fill',
-    min: 0,
-    max: 1,
-    default: 0,
-    unit: '',
-    section: 'glitch',
-    toggle: true,
-    // Mute ステップの無音にスペクトル反転音（(-1)^n）を差し込む。
-  },
-  {
     id: 217,
     name: 'glitchOn',
     label: 'Glitch On',

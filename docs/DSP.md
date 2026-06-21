@@ -18,16 +18,16 @@
 5 セクション（Drive / Pitch / Glitch / Band / Master）。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
 全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo/Mute)`（§2b）。実処理順は上から下。
 
-| セクション | 段                 | 内容                                                                                                                 | パラメータ                                                   | ユニット            |
-| ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------- |
-| **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                               | Drive(200)                                                   | `dsp/saturation.ts` |
-| 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                   | —                                                            | 〃                  |
-| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替 | Drive 連動 / Comp(222)                                       | 〃                  |
-| 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                         | Tone(201)                                                    | 〃                  |
-| **Pitch**  | Wobble             | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）                                                                      | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207)     | `dsp/wobble.ts`     |
-| **Glitch** | ステップシーケンサ | ブロック(隣接)モデル・9タイプ(Dry/Glitch/Freeze/Reverse/Random/Mute/Repeat×3)・BPM拍ロック・再現性                   | Glitch(204)wet/Fill(212)/On(217)/Step×16(223-238)/phase(239) | `dsp/glitch.ts`     |
-| **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                 | Output(202)                                                  | `distortion.ts`     |
-| Master     | Bypass             | 全体を dry へクロスフェード                                                                                          | Bypass(208)                                                  | 〃                  |
+| セクション | 段                 | 内容                                                                                                                 | パラメータ                                               | ユニット            |
+| ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------- |
+| **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                               | Drive(200)                                               | `dsp/saturation.ts` |
+| 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                   | —                                                        | 〃                  |
+| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替 | Drive 連動 / Comp(222)                                   | 〃                  |
+| 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                         | Tone(201)                                                | 〃                  |
+| **Pitch**  | Wobble             | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）                                                                      | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207) | `dsp/wobble.ts`     |
+| **Glitch** | ステップシーケンサ | ブロック(隣接)モデル・9タイプ(Dry/Glitch/Freeze/Reverse/Random/Mute/Repeat×3)・BPM拍ロック・再現性                   | Glitch(204)wet/On(217)/Step×16(223-238)/phase(239)       | `dsp/glitch.ts`     |
+| **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                 | Output(202)                                              | `distortion.ts`     |
+| Master     | Bypass             | 全体を dry へクロスフェード                                                                                          | Bypass(208)                                              | 〃                  |
 
 - セクション ON/OFF（Drive On=206 / Pitch On=207 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。
 - 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215 / Mute=216）は §2b。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
@@ -202,7 +202,7 @@ Freeze:  ブロック頭で直近 FREEZE_REGION(=730ms) を凍結バッファに
 Reverse: hist[blockStartWrite − blockPhase]（revLen=ブロック幅）＝直前ブロック幅を逆再生
 Random:  ステップ毎に seed=絶対step で microKind∈{0 ラチェット / 1 逆 / 2 ハーフ} を再抽選
          ＝幅広でも毎1/16でマイクロ効果が変化（≠均一ループの Repeat）。決定論で再現性維持
-Mute:    gate（中央=無音・両端 FADE）。Spectral Fill(212) ON で (-1)^n スペクトル反転を差し込む
+Mute:    gate（中央=無音・両端 FADE）
 Repeat1/16・1/8・1/4: chunk=分割(1/2/4×stepLen) を継続長ぶんループ。chunk<幅 で連続ループ
 ```
 

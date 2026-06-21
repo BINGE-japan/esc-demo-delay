@@ -75,10 +75,10 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 - `useParam(id, opts)` の `id` は VST controller の `addParameter` tag と一致必須（[param.ts](../src/sdk/param.ts) 冒頭）。
 - 既存: synth `0..5` / saturator `100..102`。本プラグインは **200番台**:
   - 連続: Drive=200, Tone=201, Output=202, Wobble(Depth)=203, Glitch=204, Wob Speed=210, Wob Occur=211, Band Lo=213(log), Band Hi=214(log)
-  - トグル: Drive On=206, Comp=222, Pitch On=207, Bypass=208, Spectral Fill=212, Solo=215, Mute=216, Glitch On=217
+  - トグル: Drive On=206, Comp=222, Pitch On=207, Bypass=208, Solo=215, Mute=216, Glitch On=217
   - ステップ（`grid`・enum 0..8）: Step 1–16 = 223–238（Glitch シーケンサ。0Dry/1Glitch/2Freeze/3Reverse/4Random/5Mute/6-8Repeat。useParam あり・自動スライダなし）
   - 内部: bpm=209（App が `transport.tempo` を供給）/ glitchPhase=239（App が小節内位相 0..1 を供給）。どちらも `hidden:true`・UI/useParam なし
-  - 廃止/欠番: 205＝旧 Auto Gain（リアクティブ自動トリム撤去、2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝反映されなかった実験の名残。再利用しない（VST tag 衝突回避）
+  - 廃止/欠番: 205＝旧 Auto Gain（リアクティブ自動トリム撤去、2026-06-21）/ 212＝旧 Spectral Fill（2026-06-21 撤去）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝反映されなかった実験の名残。再利用しない（VST tag 衝突回避）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。
 
 ## 6. runtime 差分の扱い

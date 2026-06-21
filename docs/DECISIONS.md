@@ -422,4 +422,10 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `dsp/saturation.ts`（定数2つ）。DSP §2 更新。makeup 本体（`a·fullMakeup(geff)`）は Drive 不変なので、Comp OFF はもともとフラット。絶対レベル（ON/OFF 差）は要再試聴で再調整しうる。
 **学び**: ラウドネス一定の土台は FF makeup で取れている。Comp トリムを**クリップ量比例**にすると Drive=音量になってしまう→**早期プラトー**で「効くが Drive には連動しない」形にするのが筋。
 
+### 2026-06-21 — Spectral Fill(212) 撤去
+
+**決定**: Glitch の Spectral Fill トグル（id 212・Mute 無音への (-1)ⁿ 反転差し込み）を削除。
+**理由**: ユーザー判断「おそらくもう必要ない」。Mute は素直に無音（両端フェード）でよい。
+**影響**: `params.ts`（212 削除）、`dsp/glitch.ts`（Mute 分岐を gate のみに簡素化・`fill` 引数/`FILL_LEVEL`/`sign` 撤去）、`distortion.ts`（gliFill 配線撤去）。SPEC §4 表/ID 注・DSP §1,§3・ARCHITECTURE §4-5 更新。id 212 は欠番（再利用しない）。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。
