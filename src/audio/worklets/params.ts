@@ -139,9 +139,21 @@ export const PARAMS: ParamDef[] = [
     grid: true,
     gridRole: 'bars',
   },
-  // ステップ 0..63（16分）。パターン長=bars*16（最大4小節=64）。値=タイプ enum:
-  //   0=Dry(空) / 1=Glitch(ラチェット) / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)
+  // Dive(タイプ6)の降下オクターブ DEBUG（耳で当てたら glitch.ts 定数化）。id 291。
+  {
+    id: 291,
+    name: 'glitchDiveOct',
+    label: 'Dive Oct',
+    min: 0,
+    max: 4,
+    default: 1,
+    unit: '',
+    section: 'glitch',
+  },
+  // ステップ 0..63（16分・内部解像度）。パターン長=bars*16（最大4小節=64）。値=タイプ enum:
+  //   0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分) / 6=Dive(ぎゅーん下降)
   // 隣接する同一値＝1ブロック（幅=継続長・小節跨ぎ可、パターン頭でのみ分割）。
+  // 表示は8分カラム（StepGrid が2スロット=8分単位でペイント）だが内部・スナップは16分。
   // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–286。
   ...Array.from(
     { length: MAX_STEPS },
@@ -150,7 +162,7 @@ export const PARAMS: ParamDef[] = [
       name: `step${i}`,
       label: `Step ${i + 1}`,
       min: 0,
-      max: 5,
+      max: 6,
       default: 0,
       unit: '',
       section: 'glitch',

@@ -84,11 +84,12 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const pitchDepth = parameters.pitch[0]
     const gliRandom = parameters.glitchRandom[0] >= 0.5
     const gliBars = parameters.glitchBars[0]
+    const gliDiveOct = parameters.glitchDiveOct[0]
     const glitchPhase = parameters.glitchPhase[0]
     for (let s = 0; s < MAX_STEPS; s++) {
       const p = parameters['step' + s]
       const v = p ? Math.round(p[0]) : 0
-      this.glitchSteps[s] = v < 0 ? 0 : v > 5 ? 5 : v // enum 0..5 にクランプ
+      this.glitchSteps[s] = v < 0 ? 0 : v > 6 ? 6 : v // enum 0..6 にクランプ
     }
     const bpm = parameters.bpm[0]
     const bandLo = parameters.bandLo[0]
@@ -143,7 +144,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
 
     // === Glitch Section ===
     for (let ch = 0; ch < n; ch++) this.snap[ch].set(output[ch])
-    this.gli.process(output, this.glitchSteps, glitchPhase, bpm, gliRandom, gliBars)
+    this.gli.process(output, this.glitchSteps, glitchPhase, bpm, gliRandom, gliBars, gliDiveOct)
     for (let i = 0; i < len; i++) {
       this.glitchMix += this.toggleCoef * (glitchTarget - this.glitchMix)
       for (let ch = 0; ch < n; ch++) {

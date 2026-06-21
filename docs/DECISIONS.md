@@ -511,4 +511,15 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **決定**: `SWING_MS=16` / `RATE=4` / `BASE_MS=20` / `SMOOTH_MS=4` を `dsp/pitch.ts` 定数へ焼き戻し、DEBUG param（pchSwing/Base/Rate/Smooth = 291–294）を撤去。
 **影響**: `pitch.ts`（定数化・process 引数を depth/glitchPhase に戻す）、`params.ts`（291–294 削除）、`distortion.ts`（配線）、`App.vue`（`ms` fmt 撤去）。DSP §Pitch 更新。291–294 は欠番。
 
+### 2026-06-21 — セルに長さ概念（8分カラム表示・内部16分）＋ Dive(ぎゅーん降下)タイプ追加
+
+ユーザー仕様変更2点。
+
+- **8分カラム表示（セル長）**: 「4Bar 分ぽちぽちが辛い。セルに長さの概念を。1セル=8分、最小16分、横連結=長さ、4Bar=今の2Bar の長さ」。**内部解像度・スナップは16分のまま（STEPS_PER_BAR=16・最大64スロット）**、**StepGrid 表示だけ8分カラム**（`bars×8`）に。1クリックで内部16分2スロットをペイント＝8分セル、再クリックでクリア。横連結=隣接ブロック=長さ（worklet 不変）。4小節=32カラム=今の2小節幅。**注: 16分単体置きは現UIでは未対応（データは16分なので将来クリック追加可）＝要確認。**
+- **Dive タイプ(enum 6)**: 「Pitch をぎゅーんと降下させる行。セル長で1オクターブ下がる」。`dsp/glitch.ts` に新タイプ。ブロック位相 p で `rate=2^(-diveOct·p)`（1→2^-diveOct）、`histWrite−diveDelay` を読み `diveDelay += (1−rate)`＝読みが遅れ＝ピッチ降下（セル長＝降下にかかる時間）。**降下オクターブは DEBUG param `glitchDiveOct`(291)・既定1**（ユーザーが数値指定→確定後 定数化）。
+
+**影響**: `dsp/glitch.ts`（TYPE_DIVE・diveDelay・dispatch・diveOct 引数）、`params.ts`（step max 5→6・glitchDiveOct 291・コメント）、`distortion.ts`（diveOct 配線・clamp 0..6）、`StepGrid.vue`（8分カラム・2スロットペイント・Dive 行＝6行）。SPEC §4,§6・DSP §1,§3・ARCHITECTURE §2,§5 更新。
+**判断（要再確認）**: 8分カラム＝内部16分で「1クリック=8分」。16分単体置きの UI は未実装（必要なら追加）。Dive は線形 `2^(-oct·p)` 降下・既定1オクターブ。
+**学び**: 「セルに長さ」は内部解像度を変えずに**表示の粒度（8分カラム）＋1クリック複数スロット**で出せる＝worklet 不変で済む。ピッチ降下は**可変ディレイの読み遅れ成長**＝ドップラーで実装（tape-stop 的）。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。
