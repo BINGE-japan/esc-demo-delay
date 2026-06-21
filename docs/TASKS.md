@@ -119,9 +119,24 @@
 - [ ] 音が決まったら **StepGrid UI を整形**（Repeat 分割のコンパクト表示・配色・ハイライト・ラベル）＝DSP確定後
 - [ ] 後日: 完全ランダムトグル / Tape-stop / Random の小節間変化 / ブロック split 操作 / 4/4 以外（timeSig を worklet へ）
 
+## Phase 2.12 — Glitch/Pitch 仕上げ一括（実装済・要試聴）
+
+> オートモードで一括実装＋段階コミット＋フレッシュ・レビュー（[DECISIONS.md](./DECISIONS.md) 2026-06-21 の各項）。
+
+- [x] **Freeze グラニュラー化＋iceberg HP**（コミット `c96a46c`）: 単一ループ→4声ジッタ窓グレイン＋窓和正規化、Freeze wet のみ 2-pole HP(310Hz)。Random をステップ毎再抽選に
+- [x] **音量(item4)**: Comp ON トリムの Drive 連動を緩和（`COMP_TRIM_DB 7→4` / `FULL 12→6` 早期プラトー、`d09338c`）
+- [x] **Spectral Fill 撤去(item7)**（`609eaff`）
+- [x] **型セット刷新(item3/5/2)**（`f186924`）: Repeat16分のみ・Dry 行削除(空=Dry)・Random をモード化(290)・enum 0..5・StepGrid 5行
+- [x] **小節数タブ(item1)**（`4475e82`）: 1/2/4 小節＝bars×16(最大64)・ループ長そのものを切替・複数小節 phase・glitchPhase 239→287
+- [x] **Pitch→Octave(item6)**（`5fcfb3d`）: Wobble 撤去→オクターヴ・ファズ(207)を歪み段の後・Glitch 前に
+- [x] **セクション順(item8)**（`7ad5a76`）: UI を信号フロー順 Band→Drive→Glitch→Master に
+- [x] **レビュー反映**（`472bee3`）: Freeze HP リセット / Octave クランプ / Freeze 枯渇 hop / ブロック連続判定 / SSoT 定数化(`STEPS_PER_BAR`等) / `gridRole` 判別子
+- [~] **試聴（DSP先行）**: Freeze 滑らかさ・Octave 量感・Random モード・小節数・Drive 音量を確認し定数を耳調整（**要試聴**）
+- [ ] Octave の中身（ブレンド/補正/カットオフ）を debug param で詰める。StepGrid UI 整形（音確定後）
+
 ### 次の DSP 強化（予定）
 
-- [ ] ピッチ強化（固定シフト / ハーモナイザ / ピッチダイブ / サブオクターブ 等）
+- [x] ピッチ強化 → **Octave（固定ピッチ歪み＝オクターヴ・ファズ）で実装**（item6・`5fcfb3d`）。他候補（ハーモナイザ/ダイブ/サブオクターブ）は将来検討
 
 ## Phase 3 — オーバーサンプリング
 
