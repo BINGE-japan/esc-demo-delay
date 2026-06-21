@@ -139,9 +139,10 @@ export const PARAMS: ParamDef[] = [
     grid: true,
     gridRole: 'bars',
   },
-  // ステップ 0..63（16分・内部解像度）。パターン長=bars*16（最大4小節=64）。値=タイプ enum:
-  //   0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分) / 6=Dive(ぎゅーん下降)
-  // 隣接する同一値＝1ブロック（幅=継続長・小節跨ぎ可、パターン頭でのみ分割）。
+  // ステップ 0..63（16分・内部解像度）。パターン長=bars*16（最大4小節=64）。
+  // 値(raw)= ベース型(下位3bit) | Dive(bit3=8)。0..13（ベース 0..5 ＋ Dive で +8）:
+  //   ベース 0=Dry / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat。Dive は重ねがけ（Mute 不可）。
+  // 隣接する同一 raw＝1ブロック（幅=継続長・小節跨ぎ可、パターン頭でのみ分割）。
   // 表示は8分カラム（StepGrid が2スロット=8分単位でペイント）だが内部・スナップは16分。
   // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–286。
   ...Array.from(
@@ -151,7 +152,7 @@ export const PARAMS: ParamDef[] = [
       name: `step${i}`,
       label: `Step ${i + 1}`,
       min: 0,
-      max: 6,
+      max: 13,
       default: 0,
       unit: '',
       section: 'glitch',

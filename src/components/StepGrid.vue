@@ -1,62 +1,92 @@
 <script setup lang="ts">
-// Glitch ステップシーケンサの仮UI（横=8分カラム / 縦=タイプ・択一）。
-// 上のタブで小節数(1/2/4)を選択＝グリッドが横に伸びる（ループ長そのものが変わる）。
-// 表示カラム=8分。1クリックで内部16分スロット2個をペイント（=8分セル）。横連結=長さ（隣接ブロック）。
-// 内部解像度・移動スナップは16分（最小16分）。空セル=Dry(素通り)。再クリックでクリア(=Dry)。
-// 値=タイプ enum（params.ts / glitch.ts と一致）:
-//   0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分) / 6=Dive(ぎゅーん下降)
+// Glitch ステップシーケンサの仮UI（横=8分カラム / 縦=タイプ）。
+// セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive だけ重ねがけ（Mute には不可）。
+// 表示カラム=8分。1クリックで内部16分スロット2個をペイント。横連結=長さ。内部/スナップは16分。
+// 行: Dive(モディファイア・別色) / Rpt/Rev/Frz/Glt(ベース・排他) / Mute(最下段・別色・排他/Dive クリア)。
+//   ベース 0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat。
 import { computed } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
 import { STEPS_PER_BAR, MAX_BARS, clampBars } from '../audio/worklets/params'
 
 const props = defineProps<{ steps: ParamHandle[]; bars: ParamHandle; current: number }>()
 
-// 上→下の表示順（enum 降順）。Dry 行は無し＝空セルが Dry。
-const ROWS = [
-  { label: 'Dive', val: 6 },
-  { label: 'Rpt', val: 5 },
-  { label: 'Mute', val: 4 },
-  { label: 'Rev', val: 3 },
-  { label: 'Frz', val: 2 },
-  { label: 'Glt', val: 1 },
+const BASE_MASK = 7
+const DIVE_BIT = 8
+const MUTE = 4
+
+type RowKind = 'dive' | 'source' | 'mute'
+interface Row {
+  label: string
+  val: number
+  kind: RowKind
+}
+// 上→下。Dive(重ね)→ソース(排他)→Mute(最下段)。
+const ROWS: Row[] = [
+  { label: 'Dive', val: 0, kind: 'dive' },
+  { label: 'Rpt', val: 5, kind: 'source' },
+  { label: 'Rev', val: 3, kind: 'source' },
+  { label: 'Frz', val: 2, kind: 'source' },
+  { label: 'Glt', val: 1, kind: 'source' },
+  { label: 'Mute', val: MUTE, kind: 'mute' },
 ]
 const BAR_TABS = [1, 2, MAX_BARS]
 const EIGHTHS_PER_BAR = STEPS_PER_BAR / 2 // 表示は8分カラム（内部16分の2スロット=1カラム）
 
 const barCount = computed(() => clampBars(props.bars.value))
-const cols = computed(() => barCount.value * EIGHTHS_PER_BAR) // 8分カラム数
+const cols = computed(() => barCount.value * EIGHTHS_PER_BAR)
 
-// 表示カラム dc → 内部16分スロット [2dc, 2dc+1]。
-function active(dc: number, val: number): boolean {
+function rawAt(dc: number): number {
   const h = props.steps[2 * dc]
-  return h ? Math.round(h.value) === val : false
+  return h ? Math.round(h.value) : 0
 }
-// クリック: 未選択→そのタイプ(2スロット=8分)、選択済み→0(Dry)へクリア（トグル）。
-function setCell(dc: number, val: number): void {
-  const a = props.steps[2 * dc]
-  if (!a) return
-  const next = Math.round(a.value) === val ? 0 : val
-  for (const h of [a, props.steps[2 * dc + 1]]) {
+function active(dc: number, row: Row): boolean {
+  const raw = rawAt(dc)
+  return row.kind === 'dive' ? (raw & DIVE_BIT) !== 0 : (raw & BASE_MASK) === row.val
+}
+// 表示カラム dc → 内部16分スロット [2dc, 2dc+1] に同じ raw を書く。
+function writeRaw(dc: number, raw: number): void {
+  for (const h of [props.steps[2 * dc], props.steps[2 * dc + 1]]) {
     if (!h) continue
     h.begin()
-    h.setFromUser(next)
+    h.setFromUser(raw)
     h.end()
   }
+}
+function setCell(dc: number, row: Row): void {
+  const raw = rawAt(dc)
+  const base = raw & BASE_MASK
+  const dive = (raw & DIVE_BIT) !== 0
+  let next: number
+  if (row.kind === 'dive') {
+    if (base === MUTE) return // Mute には Dive 不可
+    next = base | (dive ? 0 : DIVE_BIT)
+  } else {
+    // ソース/Mute=排他ベース。トグル。Mute は Dive をクリア、他はベース変更で Dive 維持。
+    const nextBase = base === row.val ? 0 : row.val
+    const nextDive = row.val === MUTE ? 0 : dive ? DIVE_BIT : 0
+    next = nextBase | nextDive
+  }
+  writeRaw(dc, next)
 }
 function setBars(n: number): void {
   props.bars.begin()
   props.bars.setFromUser(n)
   props.bars.end()
 }
-// 再生中の16分 → 8分カラム。
 function playing(dc: number): boolean {
   return Math.floor(props.current / 2) === dc
 }
-// 拍/小節の区切りに左マージン（2カラム=拍頭、EIGHTHS_PER_BAR=小節頭をやや広く）。
 function gap(col: number): string {
   if (col % EIGHTHS_PER_BAR === 0 && col > 0) return 'ml-1.5'
   if (col % 2 === 0) return 'ml-0.5'
   return ''
+}
+// 行ごとのアクティブ配色（Dive=sky / Mute=rose / ソース=emerald）。
+function cellClass(dc: number, row: Row): string {
+  if (!active(dc, row)) return 'border-neutral-800 bg-neutral-900 hover:bg-neutral-800'
+  if (row.kind === 'dive') return 'border-sky-400/70 bg-sky-500/70'
+  if (row.kind === 'mute') return 'border-rose-400/70 bg-rose-500/70'
+  return 'border-emerald-500/70 bg-emerald-500/70'
 }
 </script>
 
@@ -82,7 +112,12 @@ function gap(col: number): string {
       </div>
     </div>
     <div class="flex flex-col gap-px">
-      <div v-for="row in ROWS" :key="row.val" class="flex items-center gap-px">
+      <div
+        v-for="row in ROWS"
+        :key="row.label"
+        class="flex items-center gap-px"
+        :class="row.kind === 'mute' ? 'mt-1' : ''"
+      >
         <span class="w-6 shrink-0 pr-1 text-right text-[9px] text-neutral-500">{{
           row.label
         }}</span>
@@ -92,13 +127,11 @@ function gap(col: number): string {
           type="button"
           class="h-4 w-4 shrink-0 rounded-[2px] border transition-colors"
           :class="[
-            active(s - 1, row.val)
-              ? 'border-emerald-500/70 bg-emerald-500/70'
-              : 'border-neutral-800 bg-neutral-900 hover:bg-neutral-800',
+            cellClass(s - 1, row),
             gap(s - 1),
             playing(s - 1) ? 'ring-1 ring-amber-400/80' : '',
           ]"
-          @click="setCell(s - 1, row.val)"
+          @click="setCell(s - 1, row)"
         />
       </div>
     </div>

@@ -528,4 +528,13 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **理由**: ユーザー「1oct でよさそう、固定で。ただ原音より高い位置からフォールするのが気になる→原音から1オクターブ下に、レコードのストップみたいに」。旧 `2^(-oct·p)`（オクターブ線形）は初動の落ちが急で「高い所から落ちる」感。**再生レート線形減速**＝実機のレコードストップ（一定減速）に寄せ、起点は原音(rate=1)・終点は1oct下(rate=0.5)に固定。
 **影響**: `dsp/glitch.ts`（DIVE_OCT/DIVE_END_RATE 定数・rate 式・process から diveOct 引数撤去）、`params.ts`（291 削除）、`distortion.ts`（配線撤去）。DSP §1,§3 更新。291 欠番。
 
+### 2026-06-21 — Dive を「重ねがけモディファイア」に（同時オン対応・調査の結論 B）
+
+**調査結論**: タイプは機能で3群——(1) ソース系(Glitch/Freeze/Reverse/Repeat)＝出力の定義なので**互いに排他**、(2) **Dive**＝出力への後段ピッチ変換なので**唯一重ねられる**、(3) Mute＝完全排他。よって同居できるのは「ソース1つ＋Dive」。ユーザー決定: **Dive だけ重ねられるように**（UI は後で工夫）。
+**決定（モデル B）**: セル値を **raw= ベース型(下位3bit) | Dive(bit3=8)**（0..13）に。Dive はベース型ではなくなり、**ベース出力を後段で降下させるモディファイア**に。
+**DSP**: `glitch.ts` で Dive 専用の出力バッファ `diveBuf`(ch毎・履歴の半分長) を持ち、各ブロックでベース出力を貯めて `diveWrite−diveDelay` を遅らせ読み＝降下（`blockDive` フラグでラッチ・隣接判定は raw 全体）。Dry+Dive＝純ピッチ降下、Glitch+Dive＝ラチェットが降下、等。Mute+Dive は UI で禁止。
+**UI**: StepGrid 行を Dive(重ね・sky色)／ソース(排他・emerald)／**Mute(最下段・rose色・排他＝選ぶと Dive クリア)** に。クリックでベース排他トグル＋Dive 独立トグル。ドラッグ伸縮(#3)は別途。
+**影響**: `dsp/glitch.ts`（TYPE_DIVE→BASE_MASK/DIVE_BIT・diveBuf/blockDive・dispatch を後段モディファイア化）、`params.ts`（step max 6→13・コメント）、`distortion.ts`（clamp 0..13）、`StepGrid.vue`（重ね/Mute 配色）。SPEC §4,§6・DSP §1,§3・ARCHITECTURE §2,§5 更新。
+**学び**: 多くのエフェクトは「出力の定義」で排他。重ねられるのは**後段モディファイア**だけ＝Dive を type でなく**bit フラグ**にし、ベース出力に後がけする構成が素直（拡張時も「モディファイア群」を bit で足せる）。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

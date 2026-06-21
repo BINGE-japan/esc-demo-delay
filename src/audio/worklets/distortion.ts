@@ -88,7 +88,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     for (let s = 0; s < MAX_STEPS; s++) {
       const p = parameters['step' + s]
       const v = p ? Math.round(p[0]) : 0
-      this.glitchSteps[s] = v < 0 ? 0 : v > 6 ? 6 : v // enum 0..6 にクランプ
+      this.glitchSteps[s] = v < 0 ? 0 : v > 13 ? 13 : v // raw 0..13（base|Dive）にクランプ
     }
     const bpm = parameters.bpm[0]
     const bandLo = parameters.bandLo[0]

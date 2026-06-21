@@ -1,9 +1,10 @@
 // Glitch ステップシーケンサ（ブロック=隣接モデル）。横=16分ステップ(bars=1/2/4 小節)、縦=タイプ。
 // 同一 enum の連続セル＝1ブロック（パターン頭でのみ分割＝小節跨ぎ可）。**ブロック幅＝継続長**。
 // BPM同期・拍ロック・再現性（パターン bars*16 がループ＝毎回同じ箇所）。docs/DSP.md §3。
-// type(enum): 0 Dry(空=素通り) / 1 Glitch(極短ラチェット) / 2 Freeze(グラニュラー保持)
-//       / 3 Reverse(幅=逆レンジ) / 4 Mute(無音) / 5 Repeat(16分ビートリピート)
-//       / 6 Dive(セル長で diveOct オクターブ降下＝ぎゅーん)。
+// セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベース型は排他、Dive だけ重ねられる（モディファイア）。
+// ベース: 0 Dry / 1 Glitch(極短ラチェット) / 2 Freeze(グラニュラー保持) / 3 Reverse(幅=逆レンジ)
+//       / 4 Mute(無音) / 5 Repeat(16分ビートリピート)。Mute には Dive 不可（UI 側で排他）。
+// Dive: ベース出力を「レコードストップ」で原音→1オクターブ下へ線形減速（セル長＝降下時間）。
 // Freeze: ブロック頭で直近 FREEZE_REGION_MS を凍結バッファにスナップ→重なり合う窓化グレイン
 //         （FREEZE_VOICES 声・読み位置ジッタ）で継ぎ目を消した持続音（≠スタッター）。docs/DSP.md §3。
 // Random モード(トグル): グリッドを無視し、全ステップで seed=絶対step から {dry/ラチェット/逆/ハーフ}
@@ -21,7 +22,8 @@ const TYPE_FREEZE = 2 // グラニュラー保持
 const TYPE_REVERSE = 3 // 幅=逆再生レンジ
 const TYPE_MUTE = 4 // 無音
 const TYPE_REPEAT = 5 // 16分ビートリピート
-const TYPE_DIVE = 6 // ぎゅーん下降（セル長で diveOct オクターブ降下）
+const BASE_MASK = 7 // raw 下位3bit＝ベース型
+const DIVE_BIT = 8 // raw bit3＝Dive モディファイア
 
 const HISTORY_MS = 2000 // 履歴リング（Reverse/Repeat/Freeze 用。最遅BPMの 2×幅を確保）
 const FADE_MS = 3 // 端/シームのフェード（クリック回避）
@@ -68,7 +70,11 @@ export class Glitch {
   private blockStartWrite = 0 // 履歴の書込位置（grain 基準）
   private blockLen = 1 // ブロック長（=継続長、samples）
   private blockChunk = 1 // grain 系タイプの 1 リピート長
+  private blockDive = false // Dive モディファイアが立っているか（ブロック頭でラッチ）
   private diveDelay = 0 // Dive: 現在の読み遅れ（成長＝ピッチ降下）。ブロック頭で 0
+  private diveWrite = 0 // Dive 出力バッファの書込位置
+  private readonly diveBufLen: number
+  private diveBuf: Float32Array[] = [] // Dive: ベース出力を貯めて遅らせ読み（ch 毎）
   private resync = 0
   // Random モードのマイクロ状態（ステップ毎に再ラッチ）
   private microStartPos = 0
@@ -97,6 +103,7 @@ export class Glitch {
   constructor(sr: number) {
     this.sr = sr
     this.historyLen = Math.max(1, Math.round((HISTORY_MS / 1000) * sr))
+    this.diveBufLen = Math.max(8, Math.floor(this.historyLen / 2) + 8) // diveDelay(≤maxGrain) を収容
     this.fade = Math.max(1, Math.round((FADE_MS / 1000) * sr))
     this.freezeGrainLen = Math.max(2, Math.round((FREEZE_GRAIN_MS / 1000) * sr))
     this.freezeRegionLen = Math.max(
@@ -135,6 +142,7 @@ export class Glitch {
     const H = this.historyLen
     while (this.history.length < n) this.history.push(new Float32Array(H))
     while (this.freezeBuf.length < n) this.freezeBuf.push(new Float32Array(this.freezeRegionLen))
+    while (this.diveBuf.length < n) this.diveBuf.push(new Float32Array(this.diveBufLen))
     while (this.hpIc1.length < n) {
       this.hpIc1.push(0)
       this.hpIc2.push(0)
@@ -181,25 +189,31 @@ export class Glitch {
           // 0 dry / 1 ラチェット / 2 逆 / 3 ハーフ（dry も抽選で混ざる）
           this.microKind = Math.floor(rand01(stepIdx * 101 + 7) * 4)
         } else {
-          const type = steps[stepIdx] ?? TYPE_DRY
+          // raw= ベース型|Dive。隣接判定は raw 全体（Dive 違いは別ブロック）。
+          const raw = steps[stepIdx] ?? 0
           // 直前ステップから1つだけ進んだ時のみ「隣接ラン継続」を判定。跳び/初回/パターン頭は
           // 必ず新ブロック頭として再ラッチ（stale な blockStartPos を引きずらない）。
           const consecutive = stepIdx === (this.prevStepIdx + 1) % patternSteps
           const prevCell = !consecutive || stepIdx === 0 ? -999 : (steps[stepIdx - 1] ?? 0)
-          if (type !== prevCell) {
+          if (raw !== prevCell) {
+            const type = raw & BASE_MASK
             this.blockType = type
+            this.blockDive = (raw & DIVE_BIT) !== 0
             this.blockStartWrite = this.histWrite
             this.blockStartPos = stepIdx * stepLen
             let bs = 1
             for (let j = stepIdx + 1; j < patternSteps; j++) {
-              if ((steps[j] ?? 0) === type) bs++
+              if ((steps[j] ?? 0) === raw) bs++
               else break
             }
             this.blockLen = bs * stepLen
             // grain 系の 1 リピート長: Glitch=1/32 固定スライス、Repeat=16分
             this.blockChunk = type === TYPE_GLITCH ? glitchSlice : Math.min(stepLenI, maxGrain)
             if (type === TYPE_FREEZE) this.snapshotFreeze(n, H, stepIdx)
-            else if (type === TYPE_DIVE) this.diveDelay = 0 // 読み遅れをブロック頭でリセット
+            if (this.blockDive) {
+              this.diveDelay = 0 // 読み遅れと出力バッファをブロック頭でリセット
+              this.diveWrite = 0
+            }
           }
         }
         this.prevStepIdx = stepIdx
@@ -229,16 +243,16 @@ export class Glitch {
       const chunk = this.blockChunk
       const revLen = Math.min(this.blockLen | 0 || 1, maxGrain)
 
-      // Dive（レコードストップ）: ブロック位相 p=0..1 で再生レートを 1→DIVE_END_RATE へ**線形減速**
-      // （原音から1オクターブ下へ・上振れなし）。histWrite − diveDelay を読み diveDelay を (1−rate) 伸長。
+      // Dive（レコードストップ）モディファイア: ベース出力を diveBuf に貯め、ブロック位相 p で
+      // 再生レートを 1→DIVE_END_RATE へ線形減速（原音→1オクターブ下・上振れなし）して遅らせ読み。
       let diveRate = 1
       let diveI0 = 0
       let diveFrac = 0
-      if (!randomMode && type === TYPE_DIVE) {
+      if (!randomMode && this.blockDive) {
         const dp =
           this.blockLen > 0 ? Math.min(1, (blockPhase < 0 ? 0 : blockPhase) / this.blockLen) : 0
         diveRate = 1 - (1 - DIVE_END_RATE) * dp
-        const readPos = this.histWrite - this.diveDelay
+        const readPos = this.diveWrite - this.diveDelay
         diveI0 = Math.floor(readPos)
         diveFrac = readPos - diveI0
       }
@@ -285,12 +299,16 @@ export class Glitch {
           let p = pf
           if (p >= revLen) p = revLen - 1
           out = dry * (1 - wet) + hist[mod(this.blockStartWrite - p, H)] * wet
-        } else if (type === TYPE_DIVE) {
-          const s = hist[mod(diveI0, H)] * (1 - diveFrac) + hist[mod(diveI0 + 1, H)] * diveFrac
-          out = dry * (1 - wet) + s * wet
         } else if (type === TYPE_GLITCH || type === TYPE_REPEAT) {
           // grain ループ（chunk は latch で確定: Glitch=1/32 固定 / Repeat=16分）
           out = dry * (1 - wet) + this.grain(hist, this.blockStartWrite, chunk, pf, H) * wet
+        }
+        // Dive モディファイア: ベース出力を貯めて遅らせ読み＝降下（重ねがけ）
+        if (!randomMode && this.blockDive) {
+          const D = this.diveBuf[ch]
+          const DL = this.diveBufLen
+          D[this.diveWrite] = out
+          out = D[mod(diveI0, DL)] * (1 - diveFrac) + D[mod(diveI0 + 1, DL)] * diveFrac
         }
         io[ch][i] = out
       }
@@ -304,10 +322,13 @@ export class Glitch {
         }
         this.freezeTimer--
       }
-      // Dive 読み遅れ前進（書込は +1/sample、読みは rate なので (1−rate) ずつ遅れる）
-      if (!randomMode && type === TYPE_DIVE) {
+      // Dive 読み遅れ前進（diveBuf 書込は +1/sample、読みは rate＝(1−rate) ずつ遅れ＝降下）
+      if (!randomMode && this.blockDive) {
         this.diveDelay += 1 - diveRate
-        if (this.diveDelay > maxGrain) this.diveDelay = maxGrain
+        const cap = Math.min(maxGrain, this.diveBufLen - 2)
+        if (this.diveDelay > cap) this.diveDelay = cap
+        this.diveWrite++
+        if (this.diveWrite >= this.diveBufLen) this.diveWrite = 0
       }
 
       this.localPos += 1
