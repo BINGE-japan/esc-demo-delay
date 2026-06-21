@@ -148,17 +148,19 @@ xt = (lp*gLow + (x - lp)*gHigh) * toneComp
 
 ### Pitch（`dsp/pitch.ts`）
 
-**Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ**。可変ディレイを「滑らかな決定論カーブ」で揺らし、読み出し速度変化＝ドップラーでピッチを寄れさせる。Glitch の後・帯域内。`Pitch(204)` ノブ=揺れ量(depth)。トグル無し（depth=0 でほぼ透過＝中心ディレイのみ）。
+**Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ**。可変ディレイを「決定論カーブ」で揺らし、読み出し速度変化＝ドップラーでピッチを寄れさせる。Glitch の後・帯域内。`Pitch(204)` ノブ=揺れ量(depth)。トグル無し（depth=0 でほぼ透過＝中心ディレイのみ）。
+
+カーブは **値ノイズ**: パターン内位相 `glitchPhase`(0..1) を `K=Rate` 区間に分け、各点 `rand01(k)∈[-1,1]` を **smoothstep 補間**。`k1=(k0+1)%K` でループ端が連続（h[K]=h[0]）＝**パターンごとに同形＝毎ループ同じ揺れ＝再現性**。
 
 ```
-// warp カーブ = Σ amp·sin(2π(freq·glitchPhase + ph))   （freq はパターンの整数倍 1/3/7 = 毎ループ同形）
-mod    = warpCurve(glitchPhase)              // [-1,1]・wow(遅)+flutter(速)
-target = BASE_DELAY + mod*depth*DEPTH_MAX    // block 毎の目標ディレイ（depth=ノブ/100）
-cur   += smoothCoef*(target - cur)           // per-sample 平滑（block 段差/rAF ジッタ除去）
-y      = lerp(buf[w-cur], buf[w-cur+1], frac)  // フラクショナル読み出し（ドップラー＝ピッチ寄れ）
+x = glitchPhase * K;  h0 = rand01(floor(x)%K); h1 = rand01((floor(x)+1)%K)
+mod    = h0 + (h1-h0)*smoothstep(frac(x))      // [-1,1]
+target = Base + mod * (depth/100) * Swing       // block 毎の目標ディレイ
+cur   += smoothCoef*(target - cur)              // per-sample 平滑（block/rAF 段差除去）
+y      = lerp(buf[w-cur], buf[w-cur+1], frac)   // フラクショナル読み出し（ドップラー＝寄れ）
 ```
 
-カーブを **glitchPhase（パターン内位相 0..1）にロック**＝パターン(bars×16)ごとに同形＝**毎ループ同じ揺れ方＝再現性**。glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。`BASE_DELAY`(≈6ms) は ±`DEPTH_MAX`(≈4ms) を確保。`HARMONICS`/`BASE`/`DEPTH_MAX`/`SMOOTH` は耳調整（詳細は今後 debug param）。band/rest は相補なので中心ディレイのコムは実質無し。
+glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。`Swing`(±変調幅)を上げる/`Rate`(K=区間数=細かさ・速さ)を上げると揺れが大きく/速くなる。`Base`≥`Swing` でディレイが正に保たれる。**Swing/Base/Rate/Smooth は現在 DEBUG param（pchSwing 291/pchBase 292/pchRate 293/pchSmooth 294）**＝耳で当てたら pitch.ts 定数へ焼き戻し撤去。band/rest は相補なので中心ディレイのコムは実質無し。揺れ速度はパターン長(bars)にも依る（長いほど遅い）。
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 

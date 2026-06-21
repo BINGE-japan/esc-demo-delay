@@ -99,6 +99,7 @@ function fmt(def: ParamDef, v: number): string {
   const sign = def.min < 0 && v > 0 ? '+' : ''
   if (def.unit === 'dB') return `${sign}${v.toFixed(1)} dB`
   if (def.unit === '%') return `${sign}${Math.round(v)}%`
+  if (def.unit === 'ms') return `${Math.round(v)} ms`
   return `${Math.round(v)}`
 }
 function stepFor(def: ParamDef): number {

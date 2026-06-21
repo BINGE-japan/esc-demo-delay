@@ -82,6 +82,10 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const comp = parameters.comp[0] >= 0.5
     const outLin = dbToLin(parameters.output[0])
     const pitchDepth = parameters.pitch[0]
+    const pchSwing = parameters.pchSwing[0] // DEBUG: ±変調幅(ms)
+    const pchBase = parameters.pchBase[0] // DEBUG: 中心ディレイ(ms)
+    const pchRate = parameters.pchRate[0] // DEBUG: 揺れの細かさ/速さ
+    const pchSmooth = parameters.pchSmooth[0] // DEBUG: 平滑(ms)
     const gliRandom = parameters.glitchRandom[0] >= 0.5
     const gliBars = parameters.glitchBars[0]
     const glitchPhase = parameters.glitchPhase[0]
@@ -154,7 +158,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     }
 
     // === Pitch Section（Vinyl Warp 風の再現性ピッチ寄れ。depth=0 でほぼ透過） ===
-    this.pit.process(output, pitchDepth, glitchPhase)
+    this.pit.process(output, pitchDepth, glitchPhase, pchSwing, pchBase, pchRate, pchSmooth)
 
     // === 帯域 recombine（+ Solo/Mute） ===
     for (let i = 0; i < len; i++) {

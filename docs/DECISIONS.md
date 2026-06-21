@@ -499,4 +499,11 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **判断（要再確認）**: Warp の揺れカーブは「パターンにロック＝毎ループ同形」で実装（Vinyl 実機の不規則 wow とは別、再現性優先）。揺れの速さ・深さ・質感は耳調整前提。セル固定幅 `w-4`。
 **学び**: 「固定ピッチ歪み」(item6)と「ピッチが揺れる」(今回)は別概念＝歪み vs 変調。ユーザーの参照(Vinyl Warp)が出た時点で**変調**と確定。再現性は glitch と同じく**位相ロック**で担保。
 
+### 2026-06-21 — Pitch(Warp) を値ノイズ化＋DEBUG パラメータ追加（MAX をもっと揺らす）
+
+**決定**: ユーザー「MAX 時はもっとわかりやすく揺れて。debug パラメータ各種用意して」。Warp カーブを Σsin から **値ノイズ**（パターンを K 区間に分け seed 付き高さを smoothstep 補間・ループ端連続）に作り替え、**Swing/Base/Rate/Smooth を DEBUG param 化**（pchSwing 291 / pchBase 292 / pchRate 293 / pchSmooth 294）。MAX の揺れ幅を既定で大きく（Swing 16ms・Rate 8）。
+**理由**: 旧 Σsin（freq 1/3/7・Swing≈4ms）は MAX でも揺れが浅く分かりにくかった。値ノイズ＋Swing/Rate を上げると揺れが大きく/速くなり、耳で詰めやすい。debug は Freeze と同じ「ライブ→確定→焼き戻し」運用。
+**影響**: `dsp/pitch.ts`（値ノイズ・process 引数 swing/base/rate/smooth）、`params.ts`（291–294）、`distortion.ts`（配線）、`App.vue`（fmt に `ms` 再追加）。DSP §Pitch 更新。確定後に定数化して 291–294 撤去。
+**学び**: 「再現性」は**位相ロックの決定論カーブ**で担保しつつ、揺れの大きさ/速さは Swing/Rate で独立に出すと調整が素直。値ノイズはループ端を `h[K]=h[0]` で連続にすれば周期化＝再現性と両立。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。
