@@ -45,7 +45,7 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 | 222     | Comp          | 0 / 1        | ON   | トグル     | —    | 歪み       | ON=自然圧縮（普通の歪み）/ OFF=ダイナミクス保持                             |
 | 204     | Pitch         | 0 〜 100     | 0    | 連続       | %    | グリッチ   | Vinyl Warp 風の再現性ピッチ寄れ（depth）。Glitch の後・帯域内               |
 | 290     | Random        | 0 / 1        | OFF  | トグル     | —    | グリッチ   | Random モード（グリッド無視・全ステップ決定論ランダム・再現性あり）         |
-| 288     | Bars          | 1 / 2 / 4    | 2    | 選択(enum) | —    | グリッチ   | ループ長(小節数)。タブ切替で grid が bars×16 列に伸びる（`grid`）           |
+| 288     | Bars          | 1 / 2 / 4    | 2    | 選択(enum) | —    | グリッチ   | ループ長(小節数)。タブ切替で grid が bars×8 カラムに伸びる（`grid`）        |
 | 217     | Glitch On     | 0 / 1        | ON   | トグル     | —    | グリッチ   | グリッチセクションの ON/OFF                                                 |
 | 223–286 | Step 1–64     | 0 〜 6       | 0    | 連続(enum) | —    | グリッチ   | type: 0Dry/1Glitch/2Freeze/3Reverse/4Mute/5Repeat/6Dive（`grid`・内部16分） |
 | 213     | Band Lo       | 20 〜 20k    | 20   | 連続(log)  | Hz   | 帯域       | エフェクトをかける下限周波数                                                |
