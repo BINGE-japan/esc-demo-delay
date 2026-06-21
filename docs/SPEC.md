@@ -19,7 +19,7 @@ Suara SDK 上に作る **ファズ／ハードクリップ系ディストーシ�
 - **ファズ／ハードクリップ**。基本シェイパーは硬いクリップ（`clamp(x, -1, +1)`）。
 - Drive を上げても Tone を変えても **聴覚上の音量は一定**（**Drive/Tone と入力レベルから計算補正**でラウドネスを揃える＝出力を測らない＝ラグ/ムラ/ポンプなし → [DSP.md](./DSP.md) §2）。
 - 音作りの軸を Drive だけでなく **Tone（暗⇄明の Tilt EQ）/ Comp（歪みのコンプ感 ON/OFF＝ダイナミクス圧縮⇄保持）/ Octave（固定ピッチ歪み＝オクターヴ・ファズ）/ Glitch（BPM同期ステップシーケンサ＝拍ロック・再現性）** に広げ、パラメータ × UI の絡みで遊べる器にする。
-- 構成は **Drive / Glitch / Band(Focus) / Master** の 4 セクションに分離（DSP も UI も。各セクション ON/OFF ＋ 帯域指定 ＋ 全体 Bypass）。Octave は Drive セクションのトグル。
+- 構成は **Band(Focus) / Drive / Glitch / Master** の 4 セクションに分離（DSP も UI も**信号フロー順**。各セクション ON/OFF ＋ 帯域指定 ＋ 全体 Bypass）。Octave は Drive セクションのトグル。
 - ハードクリップは無限次倍音を生むため **折返しノイズ（エイリアシング）対策＝オーバーサンプリング** が品質の肝（→ Phase 3）。
 
 ## 3. スコープ方針
@@ -85,7 +85,7 @@ in ─┬─ bandpass(Lo..Hi) → band → [Drive→Clip→makeup(RMS+知覚)→
 
 ## 6. UI
 
-- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **4 セクション（Drive / Glitch / Band(Focus) / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（各 ON / Comp / Octave / Solo / Mute / Bypass）はスイッチ。Glitch セクションには **ステップシーケンサ（[StepGrid.vue](../src/components/StepGrid.vue)・小節数タブ＋bars×16 列×5行）** を表示（`grid` param をスライダでなくグリッドで描画、再生中ステップをハイライト）。**両 runtime に存在**。現状は仮UI。本UI（パラメータ×UI の作り込み）はこれから。
+- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **4 セクション（信号フロー順 = Band(Focus) / Drive / Glitch / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（各 ON / Comp / Octave / Solo / Mute / Bypass）はスイッチ。Glitch セクションには **ステップシーケンサ（[StepGrid.vue](../src/components/StepGrid.vue)・小節数タブ＋bars×16 列×5行）** を表示（`grid` param をスライダでなくグリッドで描画、再生中ステップをハイライト）。**両 runtime に存在**。現状は仮UI。本UI（パラメータ×UI の作り込み）はこれから。
 - **DAW simulator（[SuaraHostPanel.vue](../src/sdk/helper/SuaraHostPanel.vue)）**: Web runtime のみ。再生・入力ソース・レベル・MIDI を供給する DAW 代役。**プラグインのノブはここに足さない**（混同回避）。
 - MVP の見た目は最小（range スライダ可）。専用ノブ部品は後フェーズで検討。
 

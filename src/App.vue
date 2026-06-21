@@ -28,10 +28,11 @@ const uiParams: ParamUI[] = PARAMS.filter((p) => !p.hidden).map((p) => ({
 }))
 
 // UI セクション分け。
+// 信号フロー順に表示: 帯域抽出 → 歪み(+Octave) → Glitch → Master。
 const SECTIONS: { key: ParamSection; title: string }[] = [
+  { key: 'band', title: 'Band (Focus)' },
   { key: 'drive', title: 'Drive' },
   { key: 'glitch', title: 'Glitch' },
-  { key: 'band', title: 'Band (Focus)' },
   { key: 'master', title: 'Master' },
 ]
 // grid param（ステップ）は自動スライダから除外＝専用 StepGrid が描画。

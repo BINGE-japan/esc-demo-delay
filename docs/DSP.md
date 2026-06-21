@@ -15,7 +15,7 @@
 
 ## 1. セクションと段構成
 
-4 セクション（Drive / Glitch / Band / Master）。Octave は Drive 内のトグル。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
+4 セクション（**信号フロー順** = Band / Drive / Glitch / Master）。Octave は Drive 内のトグル。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
 全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo/Mute)`（§2b）。実処理順は上から下。
 
 | セクション | 段                 | 内容                                                                                                                  | パラメータ                                                            | ユニット            |
