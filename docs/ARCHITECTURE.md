@@ -14,19 +14,19 @@ SDK の詳細は [src/sdk/index.ts](../src/sdk/index.ts) 参照。本書は **�
 
 DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.md](./DSP.md) §1/§6）。
 
-| パス                                                                            | 役割                                                                                 | 触る頻度 |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------- |
-| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                                 | 高       |
-| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                                     | 高       |
-| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）                         | 高       |
-| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                          | 中       |
-| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                   | 中       |
-| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                   | 中       |
-| [src/audio/worklets/dsp/octave.ts](../src/audio/worklets/dsp/octave.ts)         | オクターヴ・ファズ（全波整流＋DC 除去＝固定ピッチ歪み）                              | 中       |
-| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接モデル・拍ロック・6タイプ＋Random モード） | 中       |
-| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch ステップシーケンサの UI（小節数タブ＋bars×16 列×5行・grid param 駆動）        | 中       |
-| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                      | 低       |
-| `docs/`                                                                         | 仕様の SSoT                                                                          | 高       |
+| パス                                                                            | 役割                                                                                                    | 触る頻度 |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------- |
+| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                                                    | 高       |
+| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                                                        | 高       |
+| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）                                            | 高       |
+| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                                             | 中       |
+| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                                      | 中       |
+| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                                      | 中       |
+| [src/audio/worklets/dsp/octave.ts](../src/audio/worklets/dsp/octave.ts)         | オクターヴ・ファズ（全波整流＋DC 除去＝固定ピッチ歪み）                                                 | 中       |
+| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接モデル・拍ロック・enum 0..5＝Dry+5配置タイプ＋Random モード） | 中       |
+| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch ステップシーケンサの UI（小節数タブ＋bars×16 列×5行・grid param 駆動）                           | 中       |
+| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                         | 低       |
+| `docs/`                                                                         | 仕様の SSoT                                                                                             | 高       |
 
 - 各 DSP ユニットは `class`＋`constructor(sampleRate)`。音作りの定数は**ユニット冒頭**に集約。
 - `distortion.ts` は入力を dry に退避し、各ユニットを順に呼び、セクション ON/OFF・Bypass を**クロスフェード**で合成（[DSP.md](./DSP.md) §1）。
@@ -46,10 +46,10 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 
 ### SSoT = `params.ts`
 
-- パラメータ定義（id / name / label / min / max / default / unit / section / toggle / log / hidden / grid）は [params.ts](../src/audio/worklets/params.ts) の `PARAMS` 配列に**一元化**。
+- パラメータ定義（id / name / label / min / max / default / unit / section / toggle / log / hidden / grid / gridRole）は [params.ts](../src/audio/worklets/params.ts) の `PARAMS` 配列に**一元化**。ループ長定数（`STEPS_PER_BAR` / `MAX_BARS` / `MAX_STEPS` / `clampBars`）も同ファイルが export＝worklet・App・StepGrid が共有。
 - **worklet**: `parameterDescriptors` を `PARAMS.map(...)` で生成。
 - **App.vue**: `PARAMS` を回して `useParam` ハンドルと UI を生成（セクションで分割）。
-- **`grid` フラグ**: `useParam` ハンドルは作る（StepGrid が読み書き＋VST 自動化）が**自動スライダ UI には出さない**。`hidden`（ハンドル自体作らない）との中間。Glitch の `step0..63` と `glitchBars` が該当＝`StepGrid.vue` が描画（App は `name` で step群と bars を振り分ける）。
+- **`grid` フラグ**: `useParam` ハンドルは作る（StepGrid が読み書き＋VST 自動化）が**自動スライダ UI には出さない**。`hidden`（ハンドル自体作らない）との中間。Glitch の `step0..63` と `glitchBars` が該当＝`StepGrid.vue` が描画。種別は **`gridRole`（'step' / 'bars'）** で判別（App は name 文字列でなく gridRole で振り分ける）。
 - ⇒ 値域や既定を変えるのは **`params.ts` 1 箇所**。worklet と App が自動追従（drift しない）。
 - tsconfig: app は `src/audio/worklets/**` を exclude するが、`params.ts` は**純データ**なので App から依存 import しても型チェックを通る（環境固有 global を使わないこと）。`vp check` で検証済み。
 

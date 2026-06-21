@@ -4,7 +4,7 @@ import { createDawInput, runtime, useParam, useTransport } from '@suara/sdk'
 import type { ParamHandle } from '@suara/sdk'
 import SuaraHostPanel from '@suara/sdk/helper/SuaraHostPanel.vue'
 import StepGrid from './components/StepGrid.vue'
-import { PARAMS } from './audio/worklets/params'
+import { PARAMS, STEPS_PER_BAR, clampBars } from './audio/worklets/params'
 import type { ParamDef, ParamSection } from './audio/worklets/params'
 
 // The DSP worklet, written in TypeScript and bundled by Vite. `?worker&url` hands
@@ -41,11 +41,12 @@ const grouped = SECTIONS.map((s) => ({
   items: uiParams.filter((u) => u.def.section === s.key && !u.def.grid),
 }))
 
-// ステップシーケンサ: ステップ(step0..63)・小節数(glitchBars)ハンドルと再生中ステップ。
-const stepHandles = uiParams
-  .filter((u) => u.def.grid && u.def.name.startsWith('step'))
-  .map((u) => u.handle)
-const barsHandle = uiParams.find((u) => u.def.name === 'glitchBars')!.handle
+// ステップシーケンサ: ステップ群・小節数(bars)ハンドルと再生中ステップ。grid param の種別は
+// name 文字列でなく gridRole（SSoT）で判別。
+const stepHandles = uiParams.filter((u) => u.def.gridRole === 'step').map((u) => u.handle)
+const barsUi = uiParams.find((u) => u.def.gridRole === 'bars')
+if (!barsUi) throw new Error('glitch bars param (gridRole=bars) not found in PARAMS')
+const barsHandle = barsUi.handle
 const currentStep = ref(0)
 
 let ctx: AudioContext | null = null
@@ -132,8 +133,8 @@ function pumpPhase(): void {
   phaseRaf = 0
   if (!ctx || !playing.value) return
   const tempo = transport.state.tempo || 120
-  const bars = Math.min(4, Math.max(1, Math.round(barsHandle.value)))
-  const steps = bars * 16
+  const bars = clampBars(barsHandle.value)
+  const steps = bars * STEPS_PER_BAR
   const secPerPattern = (60 / tempo) * 4 * bars
   const posSec =
     runtime.isVst && transport.state.positionSamples > 0

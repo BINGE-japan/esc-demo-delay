@@ -465,4 +465,25 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **理由**: ユーザー「bandpass を通った音に歪みが乗るなら、今の最後の方にある並びは不自然＝実際の信号の流れに沿った順に」。帯域抽出が入口（最初）なので Band を先頭に。
 **影響**: `App.vue`（`SECTIONS` 配列の並び）のみ。SPEC §2,§6・DSP §1 のセクション列挙を信号フロー順に更新。DSP 処理順は元から band→drive→octave→glitch なので変更なし（UI 表示順だけ整合）。
 
+### 2026-06-21 — 全体コードレビュー（フレッシュ・エージェント）の指摘を反映
+
+別エージェント2観点（DSP 正しさ / 設計クリンナップ）でレビューし、確度の高い指摘を修正。
+
+**DSP 修正**:
+
+- **Freeze 再開時の HP クリック**: iceberg ハイパスの状態（`hpIc1/2`）を Freeze ブロック毎にリセットしていなかった → `snapshotFreeze` で 0 クリア（onset の不連続クリック回避）。
+- **Octave のピーク overflow**: 整流＋`OCT_MAKEUP` でブレンド出力が full scale を超えうる → `±1` にクランプ（fuzz 的・後段/出力の overflow 回避）。
+- **Freeze ボイス枯渇で hop 取りこぼし**: `spawnFreezeGrain` が空き無しでも `freezeTimer` を進めていた → 成否(boolean)を返し**成功時のみ** timer 前進（次サンプル再試行＝密度ムラ回避）。
+- **非連続ステップ跳びでブロック誤判定**: `prevCell` が単一ステップ前進前提だった → `stepIdx === (prevStepIdx+1)%patternSteps` の**連続判定**を入れ、跳び/初回/パターン頭は必ず新ブロック頭に。
+- **step enum クランプ**: `distortion.ts` で round 後に `0..5` クランプ（自動化ランプ等での範囲外を防止）。
+
+**設計クリンナップ**:
+
+- **SSoT 定数化**: `params.ts` に `STEPS_PER_BAR=16` / `MAX_BARS=4` / `MAX_STEPS=64` / `clampBars()` を export し、`glitch.ts`・`distortion.ts`・`App.vue`・`StepGrid.vue` で共有＝三重複していた `64`/`16`/bars クランプを解消（drift 防止）。
+- **`gridRole` 判別子**: `ParamDef.gridRole:'step'|'bars'` を追加。App は `name.startsWith('step')`/`find(...)!` をやめ **gridRole で判別**＋bars 欠落は init で明示エラー。
+- **命名**: `octave.ts` の `PITCH_MIX`（旧 Pitch 機能の名残）→ `OCTAVE_MIX`。
+
+**影響**: `dsp/glitch.ts`・`dsp/octave.ts`・`distortion.ts`・`params.ts`・`App.vue`・`StepGrid.vue`。`vp check`(22)/`vp build` 通過。DSP §1,§3,Octave 数式の定数名・クランプ記述を更新。
+**学び**: 数のSSoT（小節長・ステップ数）は1箇所に。質感フィルタは効果ブロック毎に**状態リセット**しないと再開クリックが出る。非線形(整流)は**出力クランプ**で系全体の overflow を防ぐ。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

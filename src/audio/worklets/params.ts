@@ -7,6 +7,16 @@
 
 export type ParamSection = 'drive' | 'glitch' | 'band' | 'master'
 
+// Glitch シーケンサのループ長 SSoT（worklet・App・StepGrid が共有＝drift 防止）。
+export const STEPS_PER_BAR = 16 // 16分・1小節あたりのステップ数
+export const MAX_BARS = 4 // 小節数の上限（タブ 1/2/4）
+export const MAX_STEPS = MAX_BARS * STEPS_PER_BAR // ステップ param の最大数（64）
+/** bars 値を 1..MAX_BARS の整数に丸めてクランプ。 */
+export const clampBars = (v: number): number => Math.min(MAX_BARS, Math.max(1, Math.round(v)))
+
+/** `grid` param の種別（StepGrid が step セル群と bars セレクタを判別）。 */
+export type GridRole = 'step' | 'bars'
+
 export interface ParamDef {
   /** VST controller の addParameter tag（useParam の id）。本プラグインは 200番台。 */
   id: number
@@ -29,6 +39,8 @@ export interface ParamDef {
   hidden?: boolean
   /** ステップシーケンサのグリッド用。useParam ハンドルは作るが自動スライダ UI には出さない（専用グリッド UI が描画）。 */
   grid?: boolean
+  /** grid param の種別（step セル / bars セレクタ）。App/StepGrid が name 文字列でなくこれで判別。 */
+  gridRole?: GridRole
 }
 
 export const PARAMS: ParamDef[] = [
@@ -132,18 +144,19 @@ export const PARAMS: ParamDef[] = [
     name: 'glitchBars',
     label: 'Bars',
     min: 1,
-    max: 4,
+    max: MAX_BARS,
     default: 2,
     unit: '',
     section: 'glitch',
     grid: true,
+    gridRole: 'bars',
   },
   // ステップ 0..63（16分）。パターン長=bars*16（最大4小節=64）。値=タイプ enum:
   //   0=Dry(空) / 1=Glitch(ラチェット) / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)
   // 隣接する同一値＝1ブロック（幅=継続長・小節跨ぎ可、パターン頭でのみ分割）。
   // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–286。
   ...Array.from(
-    { length: 64 },
+    { length: MAX_STEPS },
     (_, i): ParamDef => ({
       id: 223 + i,
       name: `step${i}`,
@@ -154,6 +167,7 @@ export const PARAMS: ParamDef[] = [
       unit: '',
       section: 'glitch',
       grid: true,
+      gridRole: 'step',
     }),
   ),
   // --- 帯域（エフェクトをかける周波数の選択。全エフェクト一括） ---

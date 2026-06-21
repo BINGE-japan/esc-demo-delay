@@ -10,8 +10,9 @@
 // 拍位置は App が positionSamples から算出した glitchPhase(0..1)。worklet は localPos をサンプル
 // 精度で自走し、大ドリフト（シーク/ループ/再生開始）だけスナップ＝rAFジッタを音に入れない。
 
+import { STEPS_PER_BAR, clampBars } from '../params'
+
 const SEED = 0x9e3779b9 | 0
-const STEPS_PER_BAR = 16 // 16分・1小節あたりのステップ数
 
 const TYPE_DRY = 0 // 空セル＝素通り
 const TYPE_GLITCH = 1 // 極短ラチェット
@@ -142,9 +143,8 @@ export class Glitch {
     const glitchSlice = Math.min(Math.max(1, Math.round(samplesPerBar / 32)), maxGrain) // 1/32 音符
     const fade = this.fade
     const snapTol = Math.round((SNAP_TOL_MS / 1000) * this.sr)
-    // ループ長: bars(1..4) 小節ぶんのパターン。stepLen は16分のまま、パターン全体で wrap。
-    const barsI = Math.min(4, Math.max(1, Math.round(bars)))
-    const patternSteps = barsI * STEPS_PER_BAR
+    // ループ長: bars(1..MAX_BARS) 小節ぶんのパターン。stepLen は16分のまま、パターン全体で wrap。
+    const patternSteps = clampBars(bars) * STEPS_PER_BAR
     const samplesPerPattern = patternSteps * stepLen
 
     // --- 再同期: host 位置と自走位置のズレが大きければスナップ（パターン長基準） ---
@@ -177,8 +177,10 @@ export class Glitch {
           this.microKind = Math.floor(rand01(stepIdx * 101 + 7) * 4)
         } else {
           const type = steps[stepIdx] ?? TYPE_DRY
-          const prevCell =
-            this.prevStepIdx === -1 || stepIdx === 0 ? -999 : (steps[stepIdx - 1] ?? 0)
+          // 直前ステップから1つだけ進んだ時のみ「隣接ラン継続」を判定。跳び/初回/パターン頭は
+          // 必ず新ブロック頭として再ラッチ（stale な blockStartPos を引きずらない）。
+          const consecutive = stepIdx === (this.prevStepIdx + 1) % patternSteps
+          const prevCell = !consecutive || stepIdx === 0 ? -999 : (steps[stepIdx - 1] ?? 0)
           if (type !== prevCell) {
             this.blockType = type
             this.blockStartWrite = this.histWrite
@@ -229,9 +231,9 @@ export class Glitch {
       if (microEnv < 0) microEnv = 0
       const wetR = wetAmt * microEnv * rGain
 
-      // Freeze グレイン発火（block モードで Freeze の時のみ・チャンネル非依存・1サンプル1回）
-      if (!randomMode && type === TYPE_FREEZE && this.freezeTimer <= 0) {
-        this.spawnFreezeGrain()
+      // Freeze グレイン発火（block モードで Freeze の時のみ・チャンネル非依存・1サンプル1回）。
+      // 空きボイスが無ければ timer を進めず次サンプルで再試行（hop の取りこぼし＝密度ムラ回避）。
+      if (!randomMode && type === TYPE_FREEZE && this.freezeTimer <= 0 && this.spawnFreezeGrain()) {
         this.freezeTimer += this.freezeHop
       }
 
@@ -306,7 +308,7 @@ export class Glitch {
     return s
   }
 
-  // ブロック頭で直近 FREEZE_REGION_MS を凍結バッファへ複写し、ボイスをリセット（決定論 seed）。
+  // ブロック頭で直近 FREEZE_REGION_MS を凍結バッファへ複写し、ボイス・HP をリセット（決定論 seed）。
   private snapshotFreeze(n: number, H: number, stepIdx: number): void {
     const R = this.freezeRegionLen
     for (let ch = 0; ch < n; ch++) {
@@ -314,6 +316,9 @@ export class Glitch {
       const buf = this.freezeBuf[ch]
       const base = this.histWrite - R + 1
       for (let k = 0; k < R; k++) buf[k] = hist[mod(base + k, H)]
+      // iceberg HP を初期化＝Freeze 再開ごとに無入力状態から始める（onset クリック回避）
+      this.hpIc1[ch] = 0
+      this.hpIc2[ch] = 0
     }
     for (let v = 0; v < FREEZE_VOICES; v++) this.vPos[v] = -1
     this.freezeTimer = 0
@@ -321,15 +326,15 @@ export class Glitch {
     this.freezeCount = 0
   }
 
-  // 空きボイスに新グレインを割り当て（読み位置を中央±ジッタで決定論抽選）。
-  private spawnFreezeGrain(): void {
+  // 空きボイスに新グレインを割り当て（読み位置を中央±ジッタで決定論抽選）。空きが無ければ false。
+  private spawnFreezeGrain(): boolean {
     let v = -1
     for (let k = 0; k < FREEZE_VOICES; k++)
       if (this.vPos[k] < 0) {
         v = k
         break
       }
-    if (v < 0) return
+    if (v < 0) return false
     const center = (this.freezeRegionLen - this.freezeGrainLen) >> 1
     const r = rand01(this.freezeSeed * 131 + this.freezeCount++ + 1)
     let s = Math.round(center + (r * 2 - 1) * this.freezeJitter)
@@ -338,6 +343,7 @@ export class Glitch {
     else if (s > maxStart) s = maxStart
     this.vStart[v] = s
     this.vPos[v] = 0
+    return true
   }
 
   // 全アクティブボイスを Hann 窓で重ね合わせ→**窓和で正規化**（包絡一定＝トレモロ/粒を抑制）。

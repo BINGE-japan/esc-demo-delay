@@ -154,10 +154,10 @@ xt = (lp*gLow + (x - lp)*gHigh) * toneComp
 rect = |x|                                  // 全波整流（オクターブ上＋DC）
 hp  += hpCoef*(rect - hp)                    // 整流の DC を 1-pole で追従（DC_HP_HZ≈25Hz）
 oct  = (rect - hp) * OCT_MAKEUP              // DC 除去＝オクターブ成分（OCT_MAKEUP で音量補正）
-y    = x*(1-PITCH_MIX) + oct*PITCH_MIX       // 原信号にブレンド（PITCH_MIX≈0.6）
+y    = clamp(x*(1-OCTAVE_MIX) + oct*OCTAVE_MIX, -1, +1)  // 原信号にブレンド→full scale クランプ
 ```
 
-整流済み信号は周波数が倍＝1オクターブ上。`PITCH_MIX`/`OCT_MAKEUP`/`DC_HP_HZ` は耳調整（詳細は今後 debug param で詰める）。重い歪み（≒矩形）では `|x|` がほぼ DC になるためオクターブ感は弱まる＝素材依存（仕様）。
+整流済み信号は周波数が倍＝1オクターブ上。`OCTAVE_MIX`/`OCT_MAKEUP`/`DC_HP_HZ` は耳調整（詳細は今後 debug param で詰める）。整流＋makeup で full scale を超えうるので出力は ±1 にクランプ（fuzz 的）。重い歪み（≒矩形）では `|x|` がほぼ DC になるためオクターブ感は弱まる＝素材依存（仕様）。
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 

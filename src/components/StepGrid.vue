@@ -6,6 +6,7 @@
 //   0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)
 import { computed } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
+import { STEPS_PER_BAR, MAX_BARS, clampBars } from '../audio/worklets/params'
 
 const props = defineProps<{ steps: ParamHandle[]; bars: ParamHandle; current: number }>()
 
@@ -17,10 +18,10 @@ const ROWS = [
   { label: 'Frz', val: 2 },
   { label: 'Glt', val: 1 },
 ]
-const BAR_TABS = [1, 2, 4]
+const BAR_TABS = [1, 2, MAX_BARS]
 
-const barCount = computed(() => Math.min(4, Math.max(1, Math.round(props.bars.value))))
-const cols = computed(() => barCount.value * 16)
+const barCount = computed(() => clampBars(props.bars.value))
+const cols = computed(() => barCount.value * STEPS_PER_BAR)
 
 function active(stepIdx: number, val: number): boolean {
   const h = props.steps[stepIdx]
@@ -40,9 +41,9 @@ function setBars(n: number): void {
   props.bars.setFromUser(n)
   props.bars.end()
 }
-// 拍/小節の区切りに左マージン（4=拍頭、16=小節頭をやや広く）。
+// 拍/小節の区切りに左マージン（4=拍頭、小節頭をやや広く）。
 function gap(col: number): string {
-  if (col % 16 === 0 && col > 0) return 'ml-1.5'
+  if (col % STEPS_PER_BAR === 0 && col > 0) return 'ml-1.5'
   if (col % 4 === 0) return 'ml-0.5'
   return ''
 }

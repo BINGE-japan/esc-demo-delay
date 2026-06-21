@@ -8,7 +8,7 @@
 // セクション ON/OFF・Solo/Mute・Bypass はクリック回避のクロスフェードで合成。
 // パラメータは params.ts（SSoT）から生成（docs/ARCHITECTURE.md §4）。
 
-import { PARAMS } from './params'
+import { PARAMS, MAX_STEPS } from './params'
 import { BandSplit } from './dsp/band'
 import { Saturation } from './dsp/saturation'
 import { OctaveFuzz } from './dsp/octave'
@@ -41,7 +41,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
   private bandGain = 1 // recombine: band 成分
   private restGain = 1 // recombine: rest 成分
   private bypassMix = 0
-  private readonly glitchSteps = new Int32Array(64) // ステップシーケンサのパターン（最大4小節=64）
+  private readonly glitchSteps = new Int32Array(MAX_STEPS) // ステップシーケンサのパターン（最大4小節）
 
   // スナップショット（ch毎・quantum 長、lazy 確保）
   private fullDry: Float32Array[] = [] // 元入力（全体 Bypass の基準）
@@ -86,9 +86,10 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const gliRandom = parameters.glitchRandom[0] >= 0.5
     const gliBars = parameters.glitchBars[0]
     const glitchPhase = parameters.glitchPhase[0]
-    for (let s = 0; s < 64; s++) {
+    for (let s = 0; s < MAX_STEPS; s++) {
       const p = parameters['step' + s]
-      this.glitchSteps[s] = p ? Math.round(p[0]) : 0
+      const v = p ? Math.round(p[0]) : 0
+      this.glitchSteps[s] = v < 0 ? 0 : v > 5 ? 5 : v // enum 0..5 にクランプ
     }
     const bpm = parameters.bpm[0]
     const bandLo = parameters.bandLo[0]
