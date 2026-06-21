@@ -28,6 +28,7 @@ const DIVE_BIT = 8 // raw bit3＝Dive モディファイア
 const HISTORY_MS = 2000 // 履歴リング（Reverse/Repeat/Freeze 用。最遅BPMの 2×幅を確保）
 const FADE_MS = 3 // 端/シームのフェード（クリック回避）
 const SNAP_TOL_MS = 50 // これ以上ズレたら再同期スナップ
+const HOLD_MS = 150 // glitchPhase がこれだけ更新されなければ「停止」と見なし素通り
 // Dive（レコードストップ）: 再生レートを 1→DIVE_END_RATE へ**線形減速**（原音→下方へ）。
 const DIVE_OCT = 1 // 降下量（オクターブ・固定）。耳で確定（2026-06-21）
 const DIVE_END_RATE = Math.pow(2, -DIVE_OCT) // 終端の再生レート（=0.5＝1オクターブ下）
@@ -70,6 +71,9 @@ export class Glitch {
   private blockStartWrite = 0 // 履歴の書込位置（grain 基準）
   private blockLen = 1 // ブロック長（=継続長、samples）
   private blockChunk = 1 // grain 系タイプの 1 リピート長
+  private prevPhase = -1 // 直近の glitchPhase（停止検出用）
+  private frozenSamples = 0 // glitchPhase が更新されずに経過したサンプル数
+  private readonly holdSamples: number
   private blockDive = false // Dive モディファイアが立っているか（ブロック頭でラッチ）
   private diveDelay = 0 // Dive: 現在の読み遅れ（成長＝ピッチ降下）。ブロック頭で 0
   private diveWrite = 0 // Dive 出力バッファの書込位置
@@ -103,6 +107,7 @@ export class Glitch {
   constructor(sr: number) {
     this.sr = sr
     this.historyLen = Math.max(1, Math.round((HISTORY_MS / 1000) * sr))
+    this.holdSamples = Math.max(1, Math.round((HOLD_MS / 1000) * sr))
     this.diveBufLen = Math.max(8, Math.floor(this.historyLen / 2) + 8) // diveDelay(≤maxGrain) を収容
     this.fade = Math.max(1, Math.round((FADE_MS / 1000) * sr))
     this.freezeGrainLen = Math.max(2, Math.round((FREEZE_GRAIN_MS / 1000) * sr))
@@ -146,6 +151,23 @@ export class Glitch {
     while (this.hpIc1.length < n) {
       this.hpIc1.push(0)
       this.hpIc2.push(0)
+    }
+
+    // 停止検出: glitchPhase が一定時間更新されない＝再生停止/タブ非アクティブ(rAF 停止)。
+    // その間は glitch を素通り＝自走ループが stale 履歴を持続音化する（ビーー）のを防ぐ。
+    // 履歴は更新して復帰に備える。
+    if (glitchPhase === this.prevPhase) this.frozenSamples += len
+    else {
+      this.frozenSamples = 0
+      this.prevPhase = glitchPhase
+    }
+    if (this.frozenSamples > this.holdSamples) {
+      for (let i = 0; i < len; i++) {
+        for (let ch = 0; ch < n; ch++) this.history[ch][this.histWrite] = io[ch][i]
+        this.histWrite++
+        if (this.histWrite >= H) this.histWrite = 0
+      }
+      return
     }
 
     const samplesPerBar = Math.max(1, (this.sr * 60 * 4) / Math.max(20, bpm))

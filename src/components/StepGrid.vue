@@ -69,7 +69,7 @@ function applySlot(s: number, row: Row, add: boolean): void {
   let base = raw & BASE_MASK
   let dive = (raw & DIVE_BIT) !== 0
   if (row.kind === 'dive') {
-    if (base === MUTE) return
+    if (add && base === MUTE) base = 0 // Mute 箇所に Dive → Mute をどけて Dive 優先
     dive = add
   } else if (row.kind === 'mute') {
     if (add) {

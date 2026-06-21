@@ -115,7 +115,7 @@ toneComp = 1 / sqrt(pLow*gLow² + pHigh*gHigh²)
 
 - **抜き出し**: `band = bandpass(in, lo, hi)`。**4-pole（24dB/oct）TPT SVF**（HP(lo)×2 → LP(hi)×2）。lo/hi をスイープしてもジッパー無し。「はっきり分ける」ため急峻に。
 - **残り**: `rest = in − band`（位相反転＋加算＝引き算）→ `band + rest = in` が **厳密に成立＝完全再構成**（境界に穴/コブが出ない）。
-- **適用**: `band → [Drive]→[Pitch]→[Glitch] → bandPost`。**全エフェクト一括**（[DECISIONS.md](./DECISIONS.md) 2026-06-20）。
+- **適用**: `band → [Drive]→[Glitch]→[Pitch] → bandPost`（Pitch は Glitch の後＝グリッチ出力をワウ）。**全エフェクト一括**。
 - **合成（recombine）**:
   - Normal: `out = bandPost + rest`（帯域内=100%Wet / 帯域外=100%Dry）
   - **Solo**(215): `out = bandPost`（選択帯域だけ試聴）
@@ -148,7 +148,7 @@ xt = (lp*gLow + (x - lp)*gHigh) * toneComp
 
 ### Pitch（`dsp/pitch.ts`）
 
-**Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ**。可変ディレイを「決定論カーブ」で揺らし、読み出し速度変化＝ドップラーでピッチを寄れさせる。Glitch の後・帯域内。`Pitch(204)` ノブ=揺れ量(depth)。トグル無し（depth=0 でほぼ透過＝中心ディレイのみ）。
+**Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ**。可変ディレイを「決定論カーブ」で揺らし、読み出し速度変化＝ドップラーでピッチを寄れさせる。Glitch の後・帯域内。`Pitch(204)` ノブ=揺れ量(depth)。**`depth=0` は完全素通り**（中心ディレイ `BASE_MS`≈20ms を band に常時かけると rest との間でコム/レイテンシが出るため、未使用時はバイパス。バッファは更新のみ）。
 
 カーブは **値ノイズ**: パターン内位相 `glitchPhase`(0..1) を `K=Rate` 区間に分け、各点 `rand01(k)∈[-1,1]` を **smoothstep 補間**。`k1=(k0+1)%K` でループ端が連続（h[K]=h[0]）＝**パターンごとに同形＝毎ループ同じ揺れ＝再現性**。
 
@@ -160,7 +160,7 @@ cur   += smoothCoef*(target - cur)              // per-sample 平滑（block/rAF
 y      = lerp(buf[w-cur], buf[w-cur+1], frac)   // フラクショナル読み出し（ドップラー＝寄れ）
 ```
 
-glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。耳で確定（2026-06-21）: `SWING_MS`=16(±変調幅)・`BASE_MS`=20(中心ディレイ)・`RATE`=4(K=区間数=細かさ/速さ)・`SMOOTH_MS`=4。`BASE`≥`SWING` でディレイが正。band/rest は相補なので中心ディレイのコムは実質無し。揺れ速度はパターン長(bars)にも依る（長いほど遅い）。
+glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。耳で確定（2026-06-21）: `SWING_MS`=16(±変調幅)・`BASE_MS`=20(中心ディレイ)・`RATE`=4(K=区間数=細かさ/速さ)・`SMOOTH_MS`=4。`BASE`≥`SWING` でディレイが正。**depth>0 のときだけ処理**（depth=0 はバイパス）。揺れ速度はパターン長(bars)にも依る（長いほど遅い）。
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 
@@ -184,6 +184,7 @@ stepIdx = floor(localPos / stepLen);  posInStep = localPos - stepIdx*stepLen
 ```
 
 小ドリフトは無視＝**rAF(60Hz) ジッタを音に入れない**。大ドリフト（シーク/ループ/再生開始）だけスナップ。出力は測らない。
+**停止 hold**: `glitchPhase` が `HOLD_MS`(=150ms) 更新されなければ「停止（rAF 停止＝タブ非アクティブ等）」と見なし **glitch を素通り**（履歴は更新）。`localPos` 自走が停止位置で stale 履歴をループ＝持続音化（ビーー）するのを防ぐ。位相が再開すれば通常処理に復帰。
 
 **履歴リング**: ch 毎に `HISTORY_MS`(=2000ms,≈768KB stereo@48k) を全サンプル書込。grain/Reverse はここから読み（chunk・revLen ≤ `historyLen/2` にクランプ）。grain は `blockStartWrite` 終端の chunk をループ読み（シーム crossfade でクリック回避）。
 
@@ -229,7 +230,7 @@ out = out + (dry - out) * bypassMix              // bypassMix→1 で dry(真の
 - **音量恒常の精度**: 入力レベル連動フィードフォワード（計算のみ・出力非測定）なので**ラグ/ムラ/swell-duck は出ない**。入力を正弦と見なすモデル＋基準正弦(330Hz)較正のため**実素材では完全一定でなく僅かな固定差は残る**（時間変動でない）。明るい実素材で痩せるなら `WEIGHT_HIGH`/`REF_F0_HZ` を下げる。
 - **入力 envelope ＋ Comp**: `a` はピーク追従。**Comp OFF=速い(5/150ms)＝ダイナミクス保持**、**Comp ON=遅い(250/400ms)＝自然圧縮**（操作点だけ追いトランジェントはクリップで頭打ち）。Comp ON ではセクションのレベル変化に ~250ms で追従＝緩い操作点適応が乗る（入力由来・musical 時定数なので毎音 swell/duck とは別物）。圧縮の強弱は Drive と `ENV_*_SLOW_MS` で調整。
 - **Glitch のクリック**: stutter ループ境界は微小クリックが出うる（質感として許容）。gate はフェード済み。
-- **Pitch**: 中心ディレイ ≈数ms（band/rest 相補でコムは実質無し）。可変ディレイの読み出しは線形補間（高速変調で僅かな帯域低下＝許容）。
+- **Pitch**: depth>0 のとき中心ディレイ ≈20ms（その間は band が rest より遅延＝狭帯域でコム/レイテンシ。depth=0 はバイパス）。可変ディレイの読み出しは線形補間（高速変調で僅かな帯域低下＝許容）。
 
 ## 6. 実装対応表（機能 → ファイル）
 

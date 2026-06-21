@@ -567,4 +567,17 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
   **影響**: `StepGrid.vue` 全面（クリップ式・pointer 計算・ラン描画・グリッド背景）。worklet/params 不変。SPEC §4,§6・DSP §3・ARCHITECTURE §2,§5 を「クリップ式・8分カラム/内部16分」に更新。
   **学び**: 「N分カラム表示＋それより細かい単位の編集」はボタン羅列では無理＝**clientX→スロット＋絶対配置のクリップ描画**が要る。`pointer-events-none` をセル/ヘッドに付け、トラック1枚で全 pointer を捌くのが堅牢。
 
+### 2026-06-21 — DSP バグレビュー: 「ビーー」持続音の修正 ＋ Mute+Dive 優先 ＋ doc/code 整合
+
+フレッシュ・エージェントで全 DSP をレビュー（持続音/NaN/フィードバック/OOB 観点）。
+
+- **「ビーー」の原因＝Glitch の自走ループ（最有力・修正）**: `localPos` を毎サンプル自走させ、`glitchPhase` が止まると（再生停止／**デバッグ中にブラウザのタブが非アクティブ→rAF 停止**で位相が更新されない）、停止位置で **stale な履歴をループし続け持続音化**。Suara でなく当方バグ。**修正**: `glitchPhase` が `HOLD_MS=150ms` 更新されなければ「停止」と見なし **glitch を素通り**（履歴は更新して復帰に備える）。`glitch.ts` に `prevPhase/frozenSamples/holdSamples`。
+- **Pitch の常時20msディレイ（修正）**: depth=0 でも band に中心ディレイ ~20ms がかかり、狭帯域で rest とコム＋レイテンシ。**depth=0 は完全バイパス**（バッファ更新のみ）に。
+- **Mute+Dive（ユーザー要望・修正）**: Mute セルに Dive を置いたら **Dive 優先**＝Mute をどける（`base=MUTE && add(dive)` → `base=0`）。逆（Mute を後置）は従来どおり Dive クリア＝**最後の操作が勝つ**。
+- **doc/code 整合**: 信号順は実コードどおり **band→Drive→Glitch→Pitch**（DSP §2b の旧 `[Drive]→[Pitch]→[Glitch]` を修正）。Pitch 中心ディレイは「数ms」でなく 20ms（depth>0 時のみ）と明記。
+- **レビューで bug 無し確認**: Dive readback・Pitch ディレイにフィードバック無し、saturation の log/sqrt/asin は定義域安全、band は cutoff を sr\*0.45 にクランプ、Freeze バッファ境界 OK（NaN/OOB 無し）。
+
+**影響**: `dsp/glitch.ts`（停止 hold）、`dsp/pitch.ts`（depth=0 バイパス）、`StepGrid.vue`（Mute+Dive 優先）。DSP §2b/§3/Pitch 更新。`vp check`(22)/`vp build` 通過。
+**学び**: rAF 駆動の位相を worklet 自走で補間する設計は、**rAF が止まる状況（タブ非アクティブ/停止）で自走が暴走**する。位相更新の停止を検出して hold するのが必須。常時オンの可変ディレイは**未使用時バイパス**しないとコム/レイテンシが残る。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

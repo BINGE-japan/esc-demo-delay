@@ -57,7 +57,18 @@ export class WarpPitch {
     while (this.buf.length < n) this.buf.push(new Float32Array(this.bufLen))
     const L = this.bufLen
 
-    const depthLin = depth <= 0 ? 0 : Math.min(1, depth / 100)
+    // depth=0 は素通り（中心ディレイの常時レイテンシ/帯域とのコムを避ける）。バッファは更新だけ。
+    if (depth <= 0) {
+      for (let i = 0; i < len; i++) {
+        for (let ch = 0; ch < n; ch++) this.buf[ch][this.writePos] = io[ch][i]
+        this.writePos++
+        if (this.writePos >= L) this.writePos = 0
+      }
+      this.curDelay = this.baseDelay // 復帰時に baseDelay から
+      return
+    }
+
+    const depthLin = Math.min(1, depth / 100)
     const target = this.baseDelay + this.warpCurve(glitchPhase) * depthLin * this.swing
 
     for (let i = 0; i < len; i++) {
