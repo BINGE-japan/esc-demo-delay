@@ -544,4 +544,10 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `StepGrid.vue`（pointerdown/enter/up のドラッグペイント・select-none/touch-none）。SPEC §6 更新。worklet 不変。
 **学び**: ドラッグペイントは「方向(add/remove)を down で確定→同一行を enter でなぞる」が素直で堅牢。16分の端リサイズはサブカラム描画前提＝UI 本実装のスコープ。
 
+### 2026-06-21 — UI は DSP 完了後に Three.js で全面刷新（当面は仮UI据え置き）
+
+**決定**: プラグイン UI は **DSP を詰め切ってから Three.js 等で全面的に作り直す**。それまで `App.vue`/`StepGrid.vue` は**仮UI**のまま（params.ts 駆動のスライダ＋8分カラム・ドラッグペイント）。**StepGrid の作り込み（16分の端ハンドル・リサイズ＝サブカラムのクリップ描画、配色/レイアウト整形 等）はやらない**＝本UI刷新のスコープに送る。
+**理由**: ユーザー方針「UI は後で Three.js でめちゃくちゃ変える」。throwaway な仮UI に投資しない。DSP 機能の試聴に足りるだけの最小操作性があればよい。
+**影響**: 当面 `StepGrid.vue` は現状維持。今後の作業は **DSP 優先**（[[dsp-first-then-ui]]）。16分編集・本UIは Three.js フェーズで。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。
