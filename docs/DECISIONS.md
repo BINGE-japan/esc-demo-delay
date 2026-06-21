@@ -580,4 +580,11 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `dsp/glitch.ts`（停止 hold）、`dsp/pitch.ts`（depth=0 バイパス）、`StepGrid.vue`（Mute+Dive 優先）。DSP §2b/§3/Pitch 更新。`vp check`(22)/`vp build` 通過。
 **学び**: rAF 駆動の位相を worklet 自走で補間する設計は、**rAF が止まる状況（タブ非アクティブ/停止）で自走が暴走**する。位相更新の停止を検出して hold するのが必須。常時オンの可変ディレイは**未使用時バイパス**しないとコム/レイテンシが残る。
 
+### 2026-06-21 — StepGrid 操作: クリック=消去をクリック/ドラッグ判定に、左右ドラッグで伸縮
+
+**問題**: 端ゾーン判定(EDGE=6px)が16分セル(8px)をほぼ覆い、16分クリックがリサイズ扱い＝消えない。
+**決定**: 端ゾーン廃止。**移動有無で判定** — `pointerdown` で `moved=false`、スロットが変われば `moved=true`。`pointerup` で **!moved かつ作成でない＝クリック→そのランを消去**。ドラッグは **掴んだ側の反対端を `fixed` に、左右どちらへ動かしても** `[min(fixed,s), max(fixed,s)]` に差分 set/clear で伸縮（**左ドラッグでも伸長**・要望どおり）。空クリックは16分作成（`created` フラグでクリック消去から除外）。
+**影響**: `StepGrid.vue`（drag 状態を fixed/lo/hi/moved/created に・onDown/onMove/endDrag 刷新・EDGE 撤去）。SPEC §4,§6・ARCHITECTURE §2 更新。worklet 不変。
+**学び**: 小セルでの「端掴みリサイズ vs クリック消去」は px の端ゾーンでは破綻＝**move 有無でクリック/ドラッグを判別**するのが堅牢。伸縮は固定端＋min/max で左右対称に。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

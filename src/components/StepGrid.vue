@@ -2,7 +2,7 @@
 // Glitch ステップシーケンサの仮UI（クリップ式・横=8分カラム / 縦=タイプ）。本UIは DSP 後に Three.js で刷新。
 // セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive だけ重ねがけ（Mute には不可）。
 // 内部16分（1スロット=SLOT_W px、8分=2スロット）。空をクリック=16分セル作成（デフォ最短）、
-// そのままドラッグ/セル右端ドラッグで16分スナップ伸縮、セル本体クリックで消去。
+// セルを左右どちらにドラッグでも16分スナップで伸縮（掴んだ反対端を固定）、セルをクリック(無移動)で消去。
 // 行: Dive(モディファイア・sky) / Rpt/Rev/Frz/Glt(ベース・排他・emerald) / Mute(最下段・rose・排他)。
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
@@ -14,7 +14,6 @@ const BASE_MASK = 7
 const DIVE_BIT = 8
 const MUTE = 4
 const SLOT_W = 8 // 16分1スロットの幅(px)。8分カラム=16px
-const EDGE = 6 // 右端リサイズの掴みゾーン(px)
 
 type RowKind = 'dive' | 'source' | 'mute'
 interface Row {
@@ -44,8 +43,15 @@ const gridStyle = computed(() => ({
   ].join(','),
 }))
 
-// ドラッグ状態（右端リサイズ / 作成直後の伸縮）。
-let drag: { row: Row; anchor: number; end: number } | null = null
+// ドラッグ状態。fixed=固定端、lo/hi=現在の範囲、moved=動いたか、created=空クリック作成か。
+let drag: {
+  row: Row
+  fixed: number
+  lo: number
+  hi: number
+  moved: boolean
+  created: boolean
+} | null = null
 
 function rawAt(s: number): number {
   const h = props.steps[s]
@@ -119,30 +125,32 @@ function slotFromX(e: PointerEvent, el: HTMLElement): number {
 function onDown(e: PointerEvent, row: Row): void {
   const el = e.currentTarget as HTMLElement
   el.setPointerCapture(e.pointerId)
-  const x = e.clientX - el.getBoundingClientRect().left
   const s = slotFromX(e, el)
   if (active(s, row)) {
     const [a, b] = run(s, row)
-    if (x >= (b + 1) * SLOT_W - EDGE) {
-      drag = { row, anchor: a, end: b } // 右端→リサイズ
-    } else {
-      setRange(a, b, row, false) // 本体→消去
-    }
+    const fixed = s - a <= b - s ? b : a // 掴んだ側の反対端を固定（左寄り掴み→右端固定）
+    drag = { row, fixed, lo: a, hi: b, moved: false, created: false }
   } else {
-    setRange(s, s, row, true) // クリック=16分作成（デフォは最短16分）
-    drag = { row, anchor: s, end: s } // そのままドラッグで伸縮可
+    setRange(s, s, row, true) // クリック=16分作成（最短）
+    drag = { row, fixed: s, lo: s, hi: s, moved: false, created: true }
   }
 }
 function onMove(e: PointerEvent, row: Row): void {
   if (!drag || drag.row !== row) return
-  const el = e.currentTarget as HTMLElement
-  let end = slotFromX(e, el)
-  if (end < drag.anchor) end = drag.anchor // 最短=anchor のみ(=16分)
-  if (end > drag.end) setRange(drag.end + 1, end, row, true)
-  else if (end < drag.end) setRange(end + 1, drag.end, row, false)
-  drag.end = end
+  const s = slotFromX(e, e.currentTarget as HTMLElement)
+  const lo = Math.min(drag.fixed, s)
+  const hi = Math.max(drag.fixed, s)
+  if (lo === drag.lo && hi === drag.hi) return // 同じスロット＝動いてない
+  drag.moved = true
+  if (lo < drag.lo) setRange(lo, drag.lo - 1, row, true) // 左へ伸長
+  if (hi > drag.hi) setRange(drag.hi + 1, hi, row, true) // 右へ伸長
+  if (lo > drag.lo) setRange(drag.lo, lo - 1, row, false) // 左を短縮
+  if (hi < drag.hi) setRange(hi + 1, drag.hi, row, false) // 右を短縮
+  drag.lo = lo
+  drag.hi = hi
 }
 function endDrag(): void {
+  if (drag && !drag.moved && !drag.created) setRange(drag.lo, drag.hi, drag.row, false) // クリック=消去
   drag = null
 }
 onMounted(() => window.addEventListener('pointerup', endDrag))
