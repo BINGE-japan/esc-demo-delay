@@ -5,7 +5,7 @@
 // worklets を exclude しているが、依存として import するぶんは型チェックを通る（純データのため）。
 // 環境固有 global（DOM / audioworklet）は一切使わないこと。
 
-export type ParamSection = 'drive' | 'pitch' | 'glitch' | 'band' | 'master'
+export type ParamSection = 'drive' | 'glitch' | 'band' | 'master'
 
 export interface ParamDef {
   /** VST controller の addParameter tag（useParam の id）。本プラグインは 200番台。 */
@@ -77,46 +77,17 @@ export const PARAMS: ParamDef[] = [
     section: 'drive',
     toggle: true,
   },
-  // --- ピッチ（Wobble） ---
-  {
-    id: 203,
-    name: 'wobble',
-    label: 'Wobble',
-    min: 0,
-    max: 100,
-    default: 0,
-    unit: '%',
-    section: 'pitch',
-  },
-  {
-    id: 210,
-    name: 'wobbleSpeed',
-    label: 'Wob Speed',
-    min: 0,
-    max: 100,
-    default: 40,
-    unit: '%',
-    section: 'pitch',
-  },
-  {
-    id: 211,
-    name: 'wobbleOccur',
-    label: 'Wob Occur',
-    min: 0,
-    max: 100,
-    default: 100,
-    unit: '%',
-    section: 'pitch',
-  },
+  // Octave: 固定ピッチ歪み（オクターヴ・ファズ）の ON/OFF。歪み段の後・Glitch の前。
+  // 旧 Pitch(Wobble) セクションを撤去し、id 207 をこのトグルに転用（2026-06-21）。
   {
     id: 207,
-    name: 'pitchOn',
-    label: 'Pitch On',
+    name: 'octave',
+    label: 'Octave',
     min: 0,
     max: 1,
-    default: 1,
+    default: 0,
     unit: '',
-    section: 'pitch',
+    section: 'drive',
     toggle: true,
   },
   // --- グリッチ（ステップシーケンサ：横=16分ステップ / 縦=タイプ。docs/DSP.md §3 Glitch） ---

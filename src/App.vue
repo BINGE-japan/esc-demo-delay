@@ -30,7 +30,6 @@ const uiParams: ParamUI[] = PARAMS.filter((p) => !p.hidden).map((p) => ({
 // UI セクション分け。
 const SECTIONS: { key: ParamSection; title: string }[] = [
   { key: 'drive', title: 'Drive' },
-  { key: 'pitch', title: 'Pitch (Wobble)' },
   { key: 'glitch', title: 'Glitch' },
   { key: 'band', title: 'Band (Focus)' },
   { key: 'master', title: 'Master' },
@@ -69,7 +68,7 @@ async function buildGraph() {
   })
   // 構築直後に現在値を反映(以降は watch が追従)。
   for (const u of uiParams) applyParam(u.def.name, u.handle.value)
-  applyParam('bpm', transport.state.tempo) // hidden: transport が供給(Wobble Occur の BPM 準拠)
+  applyParam('bpm', transport.state.tempo) // hidden: transport が供給(Glitch の BPM 拍ロック)
   // DAW input (VST) or the web DAW-simulator's source → worklet → output.
   const stream = await createDawInput()
   source = ctx.createMediaStreamSource(stream)
@@ -84,7 +83,7 @@ for (const u of uiParams) {
   )
 }
 
-// BPM は transport(VST=DAW / web=simulator のテンポ)から worklet へ。Wobble Occur が BPM 準拠に。
+// BPM は transport(VST=DAW / web=simulator のテンポ)から worklet へ。Glitch の BPM 拍ロックに。
 watch(
   () => transport.state.tempo,
   (v) => applyParam('bpm', v),

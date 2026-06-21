@@ -3,7 +3,7 @@
 // 組み立て役。実体は dsp/ の各ユニット（docs/DSP.md / docs/ARCHITECTURE.md）。
 // 帯域スプリットで「選択帯域だけにエフェクト」を実現:
 //   band = bandpass(in, lo, hi);  rest = in − band（位相反転＝引き算で完全再構成）
-//   band → [Drive]→[Pitch]→[Glitch] → bandPost
+//   band → [Drive]→[Octave]→[Glitch] → bandPost
 //   out  = Normal: bandPost+rest / Solo: bandPost / Mute: rest  → Output → Bypass
 // セクション ON/OFF・Solo/Mute・Bypass はクリック回避のクロスフェードで合成。
 // パラメータは params.ts（SSoT）から生成（docs/ARCHITECTURE.md §4）。
@@ -11,7 +11,7 @@
 import { PARAMS } from './params'
 import { BandSplit } from './dsp/band'
 import { Saturation } from './dsp/saturation'
-import { Wobble } from './dsp/wobble'
+import { OctaveFuzz } from './dsp/octave'
 import { Glitch } from './dsp/glitch'
 
 const dbToLin = (db: number): number => Math.pow(10, db / 20)
@@ -30,13 +30,13 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
 
   private readonly band: BandSplit
   private readonly sat: Saturation
-  private readonly wob: Wobble
+  private readonly oct: OctaveFuzz
   private readonly gli: Glitch
   private readonly toggleCoef: number
 
   // クロスフェード用の平滑ゲイン（0..1）
   private satMix = 1
-  private pitchMix = 1
+  private octaveMix = 0
   private glitchMix = 1
   private bandGain = 1 // recombine: band 成分
   private restGain = 1 // recombine: rest 成分
@@ -53,7 +53,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     super()
     this.band = new BandSplit(sampleRate)
     this.sat = new Saturation(sampleRate)
-    this.wob = new Wobble(sampleRate)
+    this.oct = new OctaveFuzz(sampleRate)
     this.gli = new Glitch(sampleRate)
     this.toggleCoef = 1 - Math.exp(-1 / ((TOGGLE_SMOOTH_MS / 1000) * sampleRate))
   }
@@ -82,9 +82,6 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const tonePct = parameters.tone[0]
     const comp = parameters.comp[0] >= 0.5
     const outLin = dbToLin(parameters.output[0])
-    const wobAmt = parameters.wobble[0]
-    const wobSpeed = parameters.wobbleSpeed[0]
-    const wobOccur = parameters.wobbleOccur[0]
     const gliAmt = parameters.glitch[0]
     const gliRandom = parameters.glitchRandom[0] >= 0.5
     const gliBars = parameters.glitchBars[0]
@@ -97,7 +94,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const bandLo = parameters.bandLo[0]
     const bandHi = parameters.bandHi[0]
     const satTarget = parameters.satOn[0] >= 0.5 ? 1 : 0
-    const pitchTarget = parameters.pitchOn[0] >= 0.5 ? 1 : 0
+    const octaveTarget = parameters.octave[0] >= 0.5 ? 1 : 0
     const glitchTarget = parameters.glitchOn[0] >= 0.5 ? 1 : 0
     const solo = parameters.bandSolo[0] >= 0.5
     const mute = parameters.bandMute[0] >= 0.5
@@ -145,15 +142,15 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     // 音量恒常は saturation.ts のフィードフォワード補正（Drive/Tone の makeup）で完結。
     // 出力を測って後追いで下げるリアクティブ段は持たない＝ラグ/ムラなし（DECISIONS 2026-06-21）。
 
-    // === Pitch Section ===
+    // === Octave Section（固定ピッチ歪み＝オクターヴ・ファズ） ===
     for (let ch = 0; ch < n; ch++) this.snap[ch].set(output[ch])
-    this.wob.process(output, wobAmt, wobSpeed, wobOccur, bpm)
+    this.oct.process(output)
     for (let i = 0; i < len; i++) {
-      this.pitchMix += this.toggleCoef * (pitchTarget - this.pitchMix)
+      this.octaveMix += this.toggleCoef * (octaveTarget - this.octaveMix)
       for (let ch = 0; ch < n; ch++) {
         const o = output[ch]
         const s = this.snap[ch]
-        o[i] = s[i] + (o[i] - s[i]) * this.pitchMix
+        o[i] = s[i] + (o[i] - s[i]) * this.octaveMix
       }
     }
 
