@@ -163,27 +163,52 @@ function setBars(n: number): void {
 
 // --- ランダム生成 / クリア ---
 const seed = ref(1)
-const RND_DENSITY = 0.45 // セルが入る確率（16分毎）
-const RND_DIVE = 0.12 // Dive が重なる確率
+const RND_BASE_DENSITY = 0.3 // ベースのラン開始確率（16分毎）
+const RND_DIVE_DENSITY = 0.15 // Dive ラン開始確率
+const RND_MUTE_SINGLE = 0.85 // Mute が単発(1セル=16分)になる確率
 // 決定論ハッシュ [0,1)（seed と index から）。
 function hash(a: number, b: number): number {
   let t = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) >>> 0
   t = Math.imul(t ^ (t >>> 13), 1274126177) >>> 0
   return ((t ^ (t >>> 16)) >>> 0) / 4294967296
 }
+// 重み付きベース型抽選: Glt/Frz/Rev/Rpt 各2、Mute 3（やや出やすく）。
+function pickBase(r: number): number {
+  const x = r * 11
+  if (x < 2) return 1 // Glitch
+  if (x < 4) return 2 // Freeze
+  if (x < 6) return 3 // Reverse
+  if (x < 9) return MUTE // 4（重み3）
+  return 5 // Repeat
+}
 // 現在の小節範囲をシードからランダムに埋める（押すたびに seed 前進＝別配置）。範囲外は 0。
+// ベースはラン単位（Mute は単発16分寄り / 他は1-3セル）。Dive は 2個以上(8分+)のランで重ねる。
 function randomize(): void {
   seed.value = (seed.value + 1) | 0
   const sd = seed.value
   const n = slots.value
-  for (let s = 0; s < props.steps.length; s++) {
-    let raw = 0
-    if (s < n && hash(sd, s) < RND_DENSITY) {
-      raw = 1 + Math.floor(hash(sd, s * 7 + 1) * 5) // ベース 1..5
-      if (hash(sd, s * 7 + 3) < RND_DIVE) raw |= DIVE_BIT
-    }
-    writeRaw(s, raw)
+  const total = props.steps.length
+  const raws: number[] = Array.from({ length: total }, () => 0)
+  let k = 0
+  let s = 0
+  while (s < n) {
+    if (hash(sd, k++) < RND_BASE_DENSITY) {
+      const base = pickBase(hash(sd, k++))
+      let len: number
+      if (base === MUTE)
+        len = hash(sd, k++) < RND_MUTE_SINGLE ? 1 : 2 // Mute=単発寄り
+      else len = 1 + Math.floor(hash(sd, k++) * 3) // 他=1-3セル
+      for (let j = 0; j < len && s < n; j++) raws[s++] = base
+    } else s++
   }
+  s = 0
+  while (s < n) {
+    if (hash(sd, k++) < RND_DIVE_DENSITY) {
+      const len = 2 + Math.floor(hash(sd, k++) * 3) // 2-4セル（8分以上）
+      for (let j = 0; j < len && s < n; j++) raws[s++] |= DIVE_BIT
+    } else s++
+  }
+  for (let i = 0; i < total; i++) writeRaw(i, i < n ? raws[i] : 0)
 }
 function clearAll(): void {
   for (let s = 0; s < props.steps.length; s++) writeRaw(s, 0)

@@ -142,7 +142,8 @@
 - [x] **Freeze = フェードリピート**（2026-06-22）: 短チャンク(126ms)のオーバーラップ crossfade ループ（2読み位置×Hann・和=1＝アタック連打を平坦化）＋原音追従ゲイン(Level 0.55)＋ピンクノイズ(0.28)＋後段 EQ(HP370/ピーク1.2k+14 Q2.2/シェルフ3k-7.2 Q1)。耳で確定し定数化（debug 291-293 撤去）（[DECISIONS.md](./DECISIONS.md) 2026-06-22・[DSP.md](./DSP.md) §3 Freeze）
 - [~] 要試聴: フェードリピートの質感・ピンクノイズ量（PINK_SCALE）・EQ を確認。ピンク音量は要再試聴
 - [x] **Dive×Mute 共存＋連続フォール**（2026-06-22）: Dive を DIVE_BIT 連続範囲で1回のフォールに（Mute と共存・ミュート区間は無音だがフォール継続）（[DECISIONS.md](./DECISIONS.md) 2026-06-22）
-- [x] **Random を UI 生成に刷新**（2026-06-22）: DSP ランダムモード(290)撤去 → StepGrid の Random ボタン(シード・押すたび別配置)＋Clear ボタンで実セル生成。要試聴: 密度(0.45)/Dive率(0.12)
+- [x] **Random を UI 生成に刷新**（2026-06-22）: DSP ランダムモード(290)撤去 → StepGrid の Random ボタン(シード・押すたび別配置)＋Clear ボタンで実セル生成
+- [x] **Random 重み付け**（2026-06-22）: ベースはラン単位（Mute=単発16分寄り+やや高頻度/他1-3）、Dive=2-4セル連続(8分+)。要試聴: `RND_BASE_DENSITY 0.3`/`RND_DIVE_DENSITY 0.15`/`RND_MUTE_SINGLE 0.85`
 
 ## Phase 3 — オーバーサンプリング
 
