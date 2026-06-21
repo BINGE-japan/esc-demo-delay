@@ -11,11 +11,11 @@
 - サンプル単位処理。`process()` は 128 サンプル／ブロック（Web Audio 標準）。
 - パラメータは AudioParam（k-rate、ブロック先頭1値）で受け取る（[ARCHITECTURE.md](./ARCHITECTURE.md) §4）。
 - 各ユニットは `constructor(sampleRate)` で定数を算出。音作りの定数は**各ユニット冒頭**に集約（後から調整しやすく）。
-- ステレオ整合: Glitch の判定・makeup ゲイン（Drive/Tone）は **全 ch 共通**。フィルタ/スライス/Octave HP のバッファは **ch 毎**。
+- ステレオ整合: Glitch の判定・Pitch の warp カーブ・makeup ゲイン（Drive/Tone）は **全 ch 共通**。フィルタ/スライス/Pitch ディレイのバッファは **ch 毎**。
 
 ## 1. セクションと段構成
 
-4 セクション（**信号フロー順** = Band / Drive / Glitch / Master）。Octave は Drive 内のトグル。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
+4 セクション（**信号フロー順** = Band / Drive / Glitch / Master）。Pitch は Glitch 内のノブ。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
 全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo/Mute)`（§2b）。実処理順は上から下。
 
 | セクション | 段                 | 内容                                                                                                                  | パラメータ                                                            | ユニット            |
@@ -24,12 +24,12 @@
 | 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                    | —                                                                     | 〃                  |
 | 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替  | Drive 連動 / Comp(222)                                                | 〃                  |
 | 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                          | Tone(201)                                                             | 〃                  |
-| **Octave** | Octave-up fuzz     | 全波整流→DC 除去→ブレンド＝1オクターブ上の固定ピッチ歪み（歪み段の後・Glitch の前）                                   | Octave(207)                                                           | `dsp/octave.ts`     |
+| **Pitch**  | Warp ピッチ寄れ    | 可変ディレイを glitchPhase ロックの決定論カーブで揺らす＝再現性ワウ（Glitch の後・帯域内）                            | Pitch(204)                                                            | `dsp/pitch.ts`      |
 | **Glitch** | ステップシーケンサ | ブロック(隣接)モデル・6タイプ(Dry/Glitch/Freeze/Reverse/Mute/Repeat)＋Random モード・小節数1/2/4・BPM拍ロック・再現性 | Glitch(204)/On(217)/Random(290)/Bars(288)/Step×64(223-286)/phase(287) | `dsp/glitch.ts`     |
 | **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                  | Output(202)                                                           | `distortion.ts`     |
 | Master     | Bypass             | 全体を dry へクロスフェード                                                                                           | Bypass(208)                                                           | 〃                  |
 
-- セクション/効果 ON/OFF（Drive On=206 / Octave=207 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。
+- セクション ON/OFF（Drive On=206 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。Pitch(204) は depth ノブ。
 - 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215 / Mute=216）は §2b。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
 
 ## 2. 音量を「常に一定」に（入力レベル連動フィードフォワード）⭐
@@ -146,18 +146,19 @@ lp += pivotCoef*(x - lp)                          // pivot ~800Hz, ch毎
 xt = (lp*gLow + (x - lp)*gHigh) * toneComp
 ```
 
-### Octave（`dsp/octave.ts`）
+### Pitch（`dsp/pitch.ts`）
 
-固定ピッチ歪み＝**オクターヴ・ファズ**。全波整流で 1 オクターブ上の倍音を作り、整流の DC（直流）を 1-pole HP で除去して原信号にブレンド（fuzz に自然な「オクターヴ上」キャラ）。歪み段の後・Glitch の前。`Octave(207)` トグルで ON/OFF（distortion.ts のクロスフェード）。
+**Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ**。可変ディレイを「滑らかな決定論カーブ」で揺らし、読み出し速度変化＝ドップラーでピッチを寄れさせる。Glitch の後・帯域内。`Pitch(204)` ノブ=揺れ量(depth)。トグル無し（depth=0 でほぼ透過＝中心ディレイのみ）。
 
 ```
-rect = |x|                                  // 全波整流（オクターブ上＋DC）
-hp  += hpCoef*(rect - hp)                    // 整流の DC を 1-pole で追従（DC_HP_HZ≈25Hz）
-oct  = (rect - hp) * OCT_MAKEUP              // DC 除去＝オクターブ成分（OCT_MAKEUP で音量補正）
-y    = clamp(x*(1-OCTAVE_MIX) + oct*OCTAVE_MIX, -1, +1)  // 原信号にブレンド→full scale クランプ
+// warp カーブ = Σ amp·sin(2π(freq·glitchPhase + ph))   （freq はパターンの整数倍 1/3/7 = 毎ループ同形）
+mod    = warpCurve(glitchPhase)              // [-1,1]・wow(遅)+flutter(速)
+target = BASE_DELAY + mod*depth*DEPTH_MAX    // block 毎の目標ディレイ（depth=ノブ/100）
+cur   += smoothCoef*(target - cur)           // per-sample 平滑（block 段差/rAF ジッタ除去）
+y      = lerp(buf[w-cur], buf[w-cur+1], frac)  // フラクショナル読み出し（ドップラー＝ピッチ寄れ）
 ```
 
-整流済み信号は周波数が倍＝1オクターブ上。`OCTAVE_MIX`/`OCT_MAKEUP`/`DC_HP_HZ` は耳調整（詳細は今後 debug param で詰める）。整流＋makeup で full scale を超えうるので出力は ±1 にクランプ（fuzz 的）。重い歪み（≒矩形）では `|x|` がほぼ DC になるためオクターブ感は弱まる＝素材依存（仕様）。
+カーブを **glitchPhase（パターン内位相 0..1）にロック**＝パターン(bars×16)ごとに同形＝**毎ループ同じ揺れ方＝再現性**。glitchPhase は block(≈rAF 60Hz)更新だが per-sample 平滑でジッタを音に入れない。`BASE_DELAY`(≈6ms) は ±`DEPTH_MAX`(≈4ms) を確保。`HARMONICS`/`BASE`/`DEPTH_MAX`/`SMOOTH` は耳調整（詳細は今後 debug param）。band/rest は相補なので中心ディレイのコムは実質無し。
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 
@@ -222,7 +223,7 @@ out = out + (dry - out) * bypassMix              // bypassMix→1 で dry(真の
 - **音量恒常の精度**: 入力レベル連動フィードフォワード（計算のみ・出力非測定）なので**ラグ/ムラ/swell-duck は出ない**。入力を正弦と見なすモデル＋基準正弦(330Hz)較正のため**実素材では完全一定でなく僅かな固定差は残る**（時間変動でない）。明るい実素材で痩せるなら `WEIGHT_HIGH`/`REF_F0_HZ` を下げる。
 - **入力 envelope ＋ Comp**: `a` はピーク追従。**Comp OFF=速い(5/150ms)＝ダイナミクス保持**、**Comp ON=遅い(250/400ms)＝自然圧縮**（操作点だけ追いトランジェントはクリップで頭打ち）。Comp ON ではセクションのレベル変化に ~250ms で追従＝緩い操作点適応が乗る（入力由来・musical 時定数なので毎音 swell/duck とは別物）。圧縮の強弱は Drive と `ENV_*_SLOW_MS` で調整。
 - **Glitch のクリック**: stutter ループ境界は微小クリックが出うる（質感として許容）。gate はフェード済み。
-- **Octave**: 全波整流の非線形なので折返しが出うる（fuzz キャラとして許容。OS 段で軽減）。DC は HP で除去済み。
+- **Pitch**: 中心ディレイ ≈数ms（band/rest 相補でコムは実質無し）。可変ディレイの読み出しは線形補間（高速変調で僅かな帯域低下＝許容）。
 
 ## 6. 実装対応表（機能 → ファイル）
 
@@ -231,7 +232,7 @@ out = out + (dry - out) * bypassMix              // bypassMix→1 で dry(真の
 | 組み立て・セクション/バイパス          | `distortion.ts`（クロスフェード）                        |
 | Drive / Clip / makeup(RMS+知覚) / Tone | `dsp/saturation.ts`（音量恒常はここで完結）              |
 | 知覚重み付け（明るさの音量換算）       | `dsp/weighting.ts`（Drive 知覚 makeup 表の構築に使用）   |
-| オクターヴ・ファズ                     | `dsp/octave.ts`                                          |
+| Warp ピッチ寄れ                        | `dsp/pitch.ts`                                           |
 | 再現性グリッチ                         | `dsp/glitch.ts`                                          |
 | パラメータ定義（SSoT）                 | `params.ts`（[ARCHITECTURE.md](./ARCHITECTURE.md) §4-5） |
 

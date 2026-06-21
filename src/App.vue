@@ -28,7 +28,7 @@ const uiParams: ParamUI[] = PARAMS.filter((p) => !p.hidden).map((p) => ({
 }))
 
 // UI セクション分け。
-// 信号フロー順に表示: 帯域抽出 → 歪み(+Octave) → Glitch → Master。
+// 信号フロー順に表示: 帯域抽出 → 歪み → Glitch(+Pitch) → Master。
 const SECTIONS: { key: ParamSection; title: string }[] = [
   { key: 'band', title: 'Band (Focus)' },
   { key: 'drive', title: 'Drive' },
@@ -219,17 +219,23 @@ onBeforeUnmount(teardown)
     </p>
 
     <!-- 仮UI(docs/DECISIONS.md): params.ts 駆動・セクション分け。本UI(パラメータ×UI)はこれから。 -->
-    <div class="mt-2 flex w-72 flex-col gap-3">
+    <!-- グリッチ section は StepGrid のセル固定幅に合わせて横に伸びる（プラグイン幅が広がる）。
+         他 section とコントロールは w-72/max-w で細いまま。 -->
+    <div class="mt-2 flex w-fit flex-col items-center gap-3">
       <section
         v-for="g in grouped"
         :key="g.key"
         class="flex flex-col gap-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-4"
+        :class="g.key === 'glitch' ? 'w-fit' : 'w-72'"
       >
         <p class="text-[10px] uppercase tracking-widest text-neutral-500">{{ g.title }}</p>
 
         <template v-for="u in g.items" :key="u.def.id">
           <!-- 連続パラメータ: range スライダ -->
-          <label v-if="!u.def.toggle" class="flex flex-col gap-1 text-xs text-neutral-400">
+          <label
+            v-if="!u.def.toggle"
+            class="flex w-full max-w-[18rem] flex-col gap-1 text-xs text-neutral-400"
+          >
             <span class="flex justify-between">
               <span>{{ u.def.label }}</span>
               <span class="tabular-nums text-neutral-200">{{ fmt(u.def, u.handle.value) }}</span>
@@ -251,7 +257,7 @@ onBeforeUnmount(teardown)
           <button
             v-else
             type="button"
-            class="flex items-center justify-between rounded-lg border px-3 py-2 text-xs transition-colors"
+            class="flex w-full max-w-[18rem] items-center justify-between rounded-lg border px-3 py-2 text-xs transition-colors"
             :class="
               u.handle.value >= 0.5
                 ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300'

@@ -486,4 +486,17 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `dsp/glitch.ts`・`dsp/octave.ts`・`distortion.ts`・`params.ts`・`App.vue`・`StepGrid.vue`。`vp check`(22)/`vp build` 通過。DSP §1,§3,Octave 数式の定数名・クランプ記述を更新。
 **学び**: 数のSSoT（小節長・ステップ数）は1箇所に。質感フィルタは効果ブロック毎に**状態リセット**しないと再開クリックが出る。非線形(整流)は**出力クランプ**で系全体の overflow を防ぐ。
 
+### 2026-06-21 — Octave 撤去 → Pitch（Vinyl Warp 風）に一本化 ／ Glitch wet ノブ撤去 ／ セル固定幅
+
+**経緯**: item6 の「固定ピッチ歪み」を私が**オクターヴ・ファズ**と解釈して入れたが（要再確認と但し書き）、ユーザーが望むピッチは「**Vinyl の Warp 機能みたいな再現性のあるピッチ寄れ（ワウ）**」＝ピッチ**変調**であり、倍音を足す Octave とは別物だった。ユーザー判断で **Octave を撤去し Pitch に一本化**。
+
+- **Octave 撤去**: `dsp/octave.ts` 削除・`octave(207)` 撤去（207 欠番）。
+- **Glitch wet(204) 撤去**: 「グリッチ intensity ノブは不要（空セル=Dry で透過する）」→ `glitch(204)` 撤去し `gli.process` から `amount` 引数も削除（常時フル wet＝端フェードのみ内部適用）。id 204 を Pitch に転用。
+- **Pitch（Warp, 204）追加**: `dsp/pitch.ts`。可変ディレイを **glitchPhase ロックの決定論カーブ**（Σ amp·sin(2π(freq·phase+ph)) の wow+flutter, freq=パターン整数倍）で揺らす＝**毎ループ同じ揺れ＝再現性**（glitch と同じ思想）。ノブ=depth。Glitch の後・帯域内に挿入。block 段差/rAF ジッタは per-sample 平滑で除去。中身(HARMONICS/BASE/DEPTH/SMOOTH)は今後 debug param で詰める。
+- **StepGrid セル固定幅**: ユーザー「セルは1Bar時より小さくしない。幅が要ればプラグインを広げて」→ セルを `flex-1`→**固定 `w-4`(=1Bar時相当)**。グリッチ section を `w-fit` にしてグリッド幅へ伸ばし、コントロールは `max-w-[18rem]` で細いまま、外枠は中央寄せ＝**プラグインが横に広がる**（縮小しない）。
+
+**影響**: `dsp/octave.ts` 削除・`dsp/pitch.ts` 新規、`distortion.ts`（Octave 段削除・Pitch 段を Glitch 後に・gliAmt/amount 撤去）、`glitch.ts`（amount/wetAmt 撤去）、`params.ts`（204 Glitch→Pitch・207 撤去）、`StepGrid.vue`（固定幅）、`App.vue`（レイアウト幅）。SPEC §2,4,5,6・DSP §0,1,Pitch・ARCHITECTURE §2,5 更新。
+**判断（要再確認）**: Warp の揺れカーブは「パターンにロック＝毎ループ同形」で実装（Vinyl 実機の不規則 wow とは別、再現性優先）。揺れの速さ・深さ・質感は耳調整前提。セル固定幅 `w-4`。
+**学び**: 「固定ピッチ歪み」(item6)と「ピッチが揺れる」(今回)は別概念＝歪み vs 変調。ユーザーの参照(Vinyl Warp)が出た時点で**変調**と確定。再現性は glitch と同じく**位相ロック**で担保。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

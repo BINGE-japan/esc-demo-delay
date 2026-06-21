@@ -22,7 +22,7 @@ DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.m
 | [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                                             | 中       |
 | [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                                      | 中       |
 | [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                                      | 中       |
-| [src/audio/worklets/dsp/octave.ts](../src/audio/worklets/dsp/octave.ts)         | オクターヴ・ファズ（全波整流＋DC 除去＝固定ピッチ歪み）                                                 | 中       |
+| [src/audio/worklets/dsp/pitch.ts](../src/audio/worklets/dsp/pitch.ts)           | Pitch（Vinyl Warp 風＝可変ディレイ×glitchPhase ロックの決定論ワウ）                                     | 中       |
 | [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接モデル・拍ロック・enum 0..5＝Dry+5配置タイプ＋Random モード） | 中       |
 | [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch ステップシーケンサの UI（小節数タブ＋bars×16 列×5行・grid param 駆動）                           | 中       |
 | [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                         | 低       |
@@ -74,11 +74,11 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
 
 - `useParam(id, opts)` の `id` は VST controller の `addParameter` tag と一致必須（[param.ts](../src/sdk/param.ts) 冒頭）。
 - 既存: synth `0..5` / saturator `100..102`。本プラグインは **200番台**:
-  - 連続: Drive=200, Tone=201, Output=202, Glitch=204, Band Lo=213(log), Band Hi=214(log)
-  - トグル: Drive On=206, Comp=222, Octave=207, Bypass=208, Solo=215, Mute=216, Glitch On=217, Random=290
+  - 連続: Drive=200, Tone=201, Output=202, Pitch=204, Band Lo=213(log), Band Hi=214(log)
+  - トグル: Drive On=206, Comp=222, Bypass=208, Solo=215, Mute=216, Glitch On=217, Random=290
   - `grid`（自動スライダ外・StepGrid 描画）: Bars=288（ループ長 1/2/4 小節）/ Step 1–64 = 223–286（enum 0..5: 0Dry(空)/1Glitch/2Freeze/3Reverse/4Mute/5Repeat）
   - 内部: bpm=209（App が `transport.tempo` を供給）/ glitchPhase=287（App がパターン内位相 0..1 を供給）。どちらも `hidden:true`・UI/useParam なし
-  - 廃止/欠番: 203・210・211＝旧 Wobble 系（Pitch セクション撤去、2026-06-21）/ 205＝旧 Auto Gain（リアクティブ自動トリム撤去、2026-06-21）/ 212＝旧 Spectral Fill（2026-06-21 撤去）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝反映されなかった実験の名残 / 239＝旧 glitchPhase（287 へ移設、2026-06-21）。再利用しない（VST tag 衝突回避）。207 は旧 Pitch On→Octave に転用
+  - 廃止/欠番: 203・210・211＝旧 Wobble 系（2026-06-21）/ 205＝旧 Auto Gain（2026-06-21）/ 207＝旧 Pitch On→Octave（共に撤去、2026-06-21）/ 212＝旧 Spectral Fill（2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝実験の名残 / 239＝旧 glitchPhase（287 へ移設）。再利用しない（VST tag 衝突回避）。204 は旧 Glitch wet→Pitch に転用（2026-06-21）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。
 
 ## 6. runtime 差分の扱い

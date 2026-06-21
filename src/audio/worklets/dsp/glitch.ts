@@ -111,12 +111,11 @@ export class Glitch {
     this.hpA3 = hpG * this.hpA2
   }
 
-  // io を in-place。amount=全体 wet(0..100), steps=最大64 ステップ enum,
-  // glitchPhase=パターン内位相(0..1), bpm, randomMode=グリッド無視の決定論ランダム,
-  // bars=ループ長(1/2/4 小節)。パターン長=bars*16 ステップ。
+  // io を in-place。steps=最大64 ステップ enum, glitchPhase=パターン内位相(0..1), bpm,
+  // randomMode=グリッド無視の決定論ランダム, bars=ループ長(1/2/4 小節)。パターン長=bars*16。
+  // wet は常時フル（空セル=Dry で透過＝専用 wet ノブ不要。端フェードは内部で適用）。
   process(
     io: Float32Array[],
-    amount: number,
     steps: Int32Array,
     glitchPhase: number,
     bpm: number,
@@ -134,7 +133,6 @@ export class Glitch {
       this.hpIc2.push(0)
     }
 
-    const wetAmt = amount <= 0 ? 0 : Math.min(1, amount / 100)
     const samplesPerBar = Math.max(1, (this.sr * 60 * 4) / Math.max(20, bpm))
     const stepLen = Math.max(1, samplesPerBar / STEPS_PER_BAR)
     const stepLenI = Math.max(1, Math.floor(stepLen))
@@ -211,8 +209,8 @@ export class Glitch {
         rGain = 1 - this.resync / fade
         this.resync--
       }
-      const wet = wetAmt * edgeEnv * rGain // grain/reverse/freeze 系
-      const gateWet = wetAmt * rGain // gate 系（端処理は gateGain 側）
+      const wet = edgeEnv * rGain // grain/reverse/freeze 系（フル wet ×端フェード×再同期）
+      const gateWet = rGain // gate 系（端処理は gateGain 側）
       // gate ゲイン（中央=0 無音、端 fade）
       let gateGain = 0
       if (blockPhase < fade) gateGain = 1 - blockPhase / fade
@@ -229,7 +227,7 @@ export class Glitch {
       const mEdge = Math.min(microPhase, stepLen - microPhase)
       let microEnv = mEdge < fade ? mEdge / fade : 1
       if (microEnv < 0) microEnv = 0
-      const wetR = wetAmt * microEnv * rGain
+      const wetR = microEnv * rGain
 
       // Freeze グレイン発火（block モードで Freeze の時のみ・チャンネル非依存・1サンプル1回）。
       // 空きボイスが無ければ timer を進めず次サンプルで再試行（hop の取りこぼし＝密度ムラ回避）。

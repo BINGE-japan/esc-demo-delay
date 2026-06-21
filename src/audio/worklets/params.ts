@@ -89,28 +89,16 @@ export const PARAMS: ParamDef[] = [
     section: 'drive',
     toggle: true,
   },
-  // Octave: 固定ピッチ歪み（オクターヴ・ファズ）の ON/OFF。歪み段の後・Glitch の前。
-  // 旧 Pitch(Wobble) セクションを撤去し、id 207 をこのトグルに転用（2026-06-21）。
-  {
-    id: 207,
-    name: 'octave',
-    label: 'Octave',
-    min: 0,
-    max: 1,
-    default: 0,
-    unit: '',
-    section: 'drive',
-    toggle: true,
-  },
   // --- グリッチ（ステップシーケンサ：横=16分ステップ / 縦=タイプ。docs/DSP.md §3 Glitch） ---
-  // Glitch=全体 intensity/wet。既定 100（空グリッド=全Dryなら透過なので安全。ステップを置けば可聴）。
+  // Pitch: Vinyl の Warp 風＝再現性のあるピッチ寄れ/ワウ（depth）。glitchPhase ロックで毎ループ同じ。
+  // 旧 Glitch(204) intensity ノブを撤去し id 204 を Pitch に転用（空セル=Dry で透過するので wet 不要）。
   {
     id: 204,
-    name: 'glitch',
-    label: 'Glitch',
+    name: 'pitch',
+    label: 'Pitch',
     min: 0,
     max: 100,
-    default: 100,
+    default: 0,
     unit: '%',
     section: 'glitch',
   },

@@ -79,7 +79,7 @@ function gap(col: number): string {
           v-for="s in cols"
           :key="s"
           type="button"
-          class="h-4 flex-1 rounded-[2px] border transition-colors"
+          class="h-4 w-4 shrink-0 rounded-[2px] border transition-colors"
           :class="[
             active(s - 1, row.val)
               ? 'border-emerald-500/70 bg-emerald-500/70'
