@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Glitch ステップシーケンサの仮UI（クリップ式・横=8分カラム / 縦=タイプ）。本UIは DSP 後に Three.js で刷新。
 // セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive だけ重ねがけ（Mute には不可）。
-// 内部16分（1スロット=SLOT_W px、8分=2スロット）。空カラムをクリック=8分セル作成、
-// セル右端をドラッグで16分スナップ伸縮（最短16分=カラム半分）、セル本体クリックで消去。
+// 内部16分（1スロット=SLOT_W px、8分=2スロット）。空をクリック=16分セル作成（デフォ最短）、
+// そのままドラッグ/セル右端ドラッグで16分スナップ伸縮、セル本体クリックで消去。
 // 行: Dive(モディファイア・sky) / Rpt/Rev/Frz/Glt(ベース・排他・emerald) / Mute(最下段・rose・排他)。
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
@@ -129,10 +129,8 @@ function onDown(e: PointerEvent, row: Row): void {
       setRange(a, b, row, false) // 本体→消去
     }
   } else {
-    const a = s - (s % 2) // 8分カラム頭
-    const b = Math.min(a + 1, slots.value - 1)
-    setRange(a, b, row, true) // クリック=8分作成
-    drag = { row, anchor: a, end: b } // そのままドラッグで伸縮可
+    setRange(s, s, row, true) // クリック=16分作成（デフォは最短16分）
+    drag = { row, anchor: s, end: s } // そのままドラッグで伸縮可
   }
 }
 function onMove(e: PointerEvent, row: Row): void {

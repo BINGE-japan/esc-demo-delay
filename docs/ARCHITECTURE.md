@@ -14,19 +14,19 @@ SDK の詳細は [src/sdk/index.ts](../src/sdk/index.ts) 参照。本書は **�
 
 DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.md](./DSP.md) §1/§6）。
 
-| パス                                                                            | 役割                                                                                                          | 触る頻度 |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------- |
-| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                                                          | 高       |
-| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                                                              | 高       |
-| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）                                                  | 高       |
-| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                                                   | 中       |
-| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                                            | 中       |
-| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                                            | 中       |
-| [src/audio/worklets/dsp/pitch.ts](../src/audio/worklets/dsp/pitch.ts)           | Pitch（Vinyl Warp 風＝可変ディレイ×glitchPhase ロックの決定論ワウ）                                           | 中       |
-| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接・raw=ベース6型\|Dive重ね・拍ロック・Random モード）                | 中       |
-| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch シーケンサ UI（クリップ式・8分カラム/内部16分・クリック8分作成+右端16分リサイズ・Dive重ね/Mute最下段） | 中       |
-| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                               | 低       |
-| `docs/`                                                                         | 仕様の SSoT                                                                                                   | 高       |
+| パス                                                                            | 役割                                                                                                           | 触る頻度 |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------- |
+| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                                                           | 高       |
+| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                                                               | 高       |
+| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）                                                   | 高       |
+| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                                                    | 中       |
+| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                                             | 中       |
+| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                                             | 中       |
+| [src/audio/worklets/dsp/pitch.ts](../src/audio/worklets/dsp/pitch.ts)           | Pitch（Vinyl Warp 風＝可変ディレイ×glitchPhase ロックの決定論ワウ）                                            | 中       |
+| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接・raw=ベース6型\|Dive重ね・拍ロック・Random モード）                 | 中       |
+| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch シーケンサ UI（クリップ式・8分カラム/内部16分・クリック16分作成+右端16分リサイズ・Dive重ね/Mute最下段） | 中       |
+| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                                | 低       |
+| `docs/`                                                                         | 仕様の SSoT                                                                                                    | 高       |
 
 - 各 DSP ユニットは `class`＋`constructor(sampleRate)`。音作りの定数は**ユニット冒頭**に集約。
 - `distortion.ts` は入力を dry に退避し、各ユニットを順に呼び、セクション ON/OFF・Bypass を**クロスフェード**で合成（[DSP.md](./DSP.md) §1）。
