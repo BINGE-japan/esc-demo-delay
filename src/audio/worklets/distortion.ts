@@ -41,7 +41,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
   private bandGain = 1 // recombine: band 成分
   private restGain = 1 // recombine: rest 成分
   private bypassMix = 0
-  private readonly glitchSteps = new Int32Array(16) // ステップシーケンサのパターン（block 頭で更新）
+  private readonly glitchSteps = new Int32Array(64) // ステップシーケンサのパターン（最大4小節=64）
 
   // スナップショット（ch毎・quantum 長、lazy 確保）
   private fullDry: Float32Array[] = [] // 元入力（全体 Bypass の基準）
@@ -87,8 +87,9 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const wobOccur = parameters.wobbleOccur[0]
     const gliAmt = parameters.glitch[0]
     const gliRandom = parameters.glitchRandom[0] >= 0.5
+    const gliBars = parameters.glitchBars[0]
     const glitchPhase = parameters.glitchPhase[0]
-    for (let s = 0; s < 16; s++) {
+    for (let s = 0; s < 64; s++) {
       const p = parameters['step' + s]
       this.glitchSteps[s] = p ? Math.round(p[0]) : 0
     }
@@ -158,7 +159,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
 
     // === Glitch Section ===
     for (let ch = 0; ch < n; ch++) this.snap[ch].set(output[ch])
-    this.gli.process(output, gliAmt, this.glitchSteps, glitchPhase, bpm, gliRandom)
+    this.gli.process(output, gliAmt, this.glitchSteps, glitchPhase, bpm, gliRandom, gliBars)
     for (let i = 0; i < len; i++) {
       this.glitchMix += this.toggleCoef * (glitchTarget - this.glitchMix)
       for (let ch = 0; ch < n; ch++) {

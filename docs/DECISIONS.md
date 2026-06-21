@@ -441,4 +441,13 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `dsp/glitch.ts`（enum・latch を randomMode 分岐・dispatch・chunk 簡素化・TYPE_RANDOM/REP8/REP4 撤去）、`params.ts`（step max 8→5・`glitchRandom`(290) 追加・コメント）、`distortion.ts`（randomMode 配線）、`StepGrid.vue`（5行・クリッククリア）。SPEC §4,§6・DSP §1,§3・ARCHITECTURE §2,§5 更新。
 **学び**: 「自由度」は増やすほど良いわけでない＝per-cell 分割は要らなかった。ランダムは**セルでなくモード**の方が UI も意図も素直（全体に効くトグル＋再現性）。
 
+### 2026-06-21 — Glitch のループ長を可変に（小節数タブ 1/2/4）
+
+**決定**: ステップシーケンサのループ長を `Bars(288)`(1/2/4 小節) で可変化。グリッドは `bars×16` 列に伸び（16/32/64）、その長さでループ。step param を 16→**64**(223–286) に拡張、`glitchPhase` を 239→**287** へ移設（旧 239 は欠番）。
+**理由**: ユーザー「16セル(1小節)だと、これだけタイプがあるのに横軸が足りず機能を使い切れない」。タブは**16列ページングでなく、ループ長そのもの**を切替（1小節=16列1小節ループ / 4小節=64列4小節ループ）。Effectrix も尺は可変。1/2/4 で確定（128=8小節は不採用）。
+**設計**: worklet は `patternSteps=bars×16`、`localPos` をパターン長で wrap、ブロックは**パターン頭でのみ分割**（小節跨ぎブロック可＝長い Freeze/Reverse も可）。App は `barsHandle` を読み**パターン内位相**を算出して `glitchPhase` 供給。StepGrid はタブ＋`bars×16`列を描画（`grid` の step群と bars を `name` で振り分け）。
+**影響**: `params.ts`（step 16→64・`glitchBars`(288)・glitchPhase 239→287）、`dsp/glitch.ts`（STEPS→STEPS_PER_BAR・patternSteps・localPos リネーム・bars 引数）、`distortion.ts`（64 step・bars 配線）、`App.vue`（phase pump 複数小節・stepHandles 絞り込み・barsHandle）、`StepGrid.vue`（タブ＋可変列）。SPEC §4,§6・DSP §1,§3・ARCHITECTURE §2,§4-5 更新。
+**判断（要再確認）**: 既定は **2 小節**（16=単調すぎ / 64=初期で広すぎ、の中間）。VST automation lane は最大 64 step。
+**学び**: 「タブ＝ページング」と「タブ＝ループ長切替」は別物。ユーザー意図は後者（尺を作り込む）。データは最大長(64)で確保し、`bars` で使用範囲を決めるのが素直。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

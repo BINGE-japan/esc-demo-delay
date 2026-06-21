@@ -1,17 +1,17 @@
-// Glitch ステップシーケンサ（ブロック=隣接モデル）。横=16分ステップ(1小節)、縦=タイプ。
-// 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の長さ（継続長）**。
-// BPM同期・拍ロック・再現性（パターンがループ＝毎回同じ箇所）。docs/DSP.md §3。
+// Glitch ステップシーケンサ（ブロック=隣接モデル）。横=16分ステップ(bars=1/2/4 小節)、縦=タイプ。
+// 同一 enum の連続セル＝1ブロック（パターン頭でのみ分割＝小節跨ぎ可）。**ブロック幅＝継続長**。
+// BPM同期・拍ロック・再現性（パターン bars*16 がループ＝毎回同じ箇所）。docs/DSP.md §3。
 // type(enum): 0 Dry(空=素通り) / 1 Glitch(極短ラチェット) / 2 Freeze(グラニュラー保持)
 //       / 3 Reverse(幅=逆レンジ) / 4 Mute(無音) / 5 Repeat(16分ビートリピート)。
 // Freeze: ブロック頭で直近 FREEZE_REGION_MS を凍結バッファにスナップ→重なり合う窓化グレイン
 //         （FREEZE_VOICES 声・読み位置ジッタ）で継ぎ目を消した持続音（≠スタッター）。docs/DSP.md §3。
 // Random モード(トグル): グリッドを無視し、全ステップで seed=絶対step から {dry/ラチェット/逆/ハーフ}
 //         を再抽選＝決定論ランダム（dry も混ざる・再現性あり）。
-// 拍位置は App が positionSamples から算出した glitchPhase(0..1)。worklet は localBarPos をサンプル
+// 拍位置は App が positionSamples から算出した glitchPhase(0..1)。worklet は localPos をサンプル
 // 精度で自走し、大ドリフト（シーク/ループ/再生開始）だけスナップ＝rAFジッタを音に入れない。
 
 const SEED = 0x9e3779b9 | 0
-const STEPS = 16
+const STEPS_PER_BAR = 16 // 16分・1小節あたりのステップ数
 
 const TYPE_DRY = 0 // 空セル＝素通り
 const TYPE_GLITCH = 1 // 極短ラチェット
@@ -54,7 +54,7 @@ export class Glitch {
   private readonly fade: number
   private history: Float32Array[] = []
   private histWrite = 0
-  private localBarPos = 0
+  private localPos = 0
   private prevStepIdx = -1
   // 現ブロックの確定状態（ブロック頭でラッチ）
   private blockType = TYPE_DRY
@@ -110,8 +110,9 @@ export class Glitch {
     this.hpA3 = hpG * this.hpA2
   }
 
-  // io を in-place。amount=全体 wet(0..100), steps=16 ステップ enum,
-  // glitchPhase=小節内位相(0..1), bpm, randomMode=グリッド無視の決定論ランダム。
+  // io を in-place。amount=全体 wet(0..100), steps=最大64 ステップ enum,
+  // glitchPhase=パターン内位相(0..1), bpm, randomMode=グリッド無視の決定論ランダム,
+  // bars=ループ長(1/2/4 小節)。パターン長=bars*16 ステップ。
   process(
     io: Float32Array[],
     amount: number,
@@ -119,6 +120,7 @@ export class Glitch {
     glitchPhase: number,
     bpm: number,
     randomMode: boolean,
+    bars: number,
   ): void {
     const n = io.length
     if (n === 0) return
@@ -133,20 +135,24 @@ export class Glitch {
 
     const wetAmt = amount <= 0 ? 0 : Math.min(1, amount / 100)
     const samplesPerBar = Math.max(1, (this.sr * 60 * 4) / Math.max(20, bpm))
-    const stepLen = Math.max(1, samplesPerBar / STEPS)
+    const stepLen = Math.max(1, samplesPerBar / STEPS_PER_BAR)
     const stepLenI = Math.max(1, Math.floor(stepLen))
     const halfStep = Math.max(1, stepLenI >> 1)
     const maxGrain = Math.max(1, Math.floor(H / 2))
     const glitchSlice = Math.min(Math.max(1, Math.round(samplesPerBar / 32)), maxGrain) // 1/32 音符
     const fade = this.fade
     const snapTol = Math.round((SNAP_TOL_MS / 1000) * this.sr)
+    // ループ長: bars(1..4) 小節ぶんのパターン。stepLen は16分のまま、パターン全体で wrap。
+    const barsI = Math.min(4, Math.max(1, Math.round(bars)))
+    const patternSteps = barsI * STEPS_PER_BAR
+    const samplesPerPattern = patternSteps * stepLen
 
-    // --- 再同期: host 拍位置と自走位置のズレが大きければスナップ ---
-    const hostBarPos = glitchPhase * samplesPerBar
-    let d = hostBarPos - this.localBarPos
-    d -= samplesPerBar * Math.round(d / samplesPerBar)
+    // --- 再同期: host 位置と自走位置のズレが大きければスナップ（パターン長基準） ---
+    const hostPos = glitchPhase * samplesPerPattern
+    let d = hostPos - this.localPos
+    d -= samplesPerPattern * Math.round(d / samplesPerPattern)
     if (Math.abs(d) > snapTol) {
-      this.localBarPos = hostBarPos
+      this.localPos = hostPos
       this.prevStepIdx = -1 // 次サンプルでブロック再ラッチ
       this.resync = fade
     }
@@ -158,9 +164,9 @@ export class Glitch {
     for (let i = 0; i < len; i++) {
       for (let ch = 0; ch < n; ch++) this.history[ch][this.histWrite] = io[ch][i]
 
-      let stepIdx = Math.floor(this.localBarPos / stepLen)
+      let stepIdx = Math.floor(this.localPos / stepLen)
       if (stepIdx < 0) stepIdx = 0
-      else if (stepIdx >= STEPS) stepIdx = STEPS - 1
+      else if (stepIdx >= patternSteps) stepIdx = patternSteps - 1
 
       // ステップ境界でラッチ。Random モードは毎ステップ再抽選、通常はブロック(隣接ラン)頭で確定。
       if (stepIdx !== this.prevStepIdx) {
@@ -178,7 +184,7 @@ export class Glitch {
             this.blockStartWrite = this.histWrite
             this.blockStartPos = stepIdx * stepLen
             let bs = 1
-            for (let j = stepIdx + 1; j < STEPS; j++) {
+            for (let j = stepIdx + 1; j < patternSteps; j++) {
               if ((steps[j] ?? 0) === type) bs++
               else break
             }
@@ -192,7 +198,7 @@ export class Glitch {
       }
 
       const type = this.blockType
-      const blockPhase = this.localBarPos - this.blockStartPos
+      const blockPhase = this.localPos - this.blockStartPos
       const pf = Math.floor(blockPhase < 0 ? 0 : blockPhase)
       // 端フェード（ブロック端でのみ wet を絞る＝内部ステップ境界では絞らない）＋再同期フェード
       const edge = Math.min(blockPhase, this.blockLen - blockPhase)
@@ -216,7 +222,7 @@ export class Glitch {
       const revLen = Math.min(this.blockLen | 0 || 1, maxGrain)
 
       // Random モードのマイクロ位相・端フェード（ステップ単位）
-      const microPhase = this.localBarPos - this.microStartPos
+      const microPhase = this.localPos - this.microStartPos
       const mpf = microPhase < 0 ? 0 : Math.floor(microPhase)
       const mEdge = Math.min(microPhase, stepLen - microPhase)
       let microEnv = mEdge < fade ? mEdge / fade : 1
@@ -274,8 +280,8 @@ export class Glitch {
         this.freezeTimer--
       }
 
-      this.localBarPos += 1
-      if (this.localBarPos >= samplesPerBar) this.localBarPos -= samplesPerBar
+      this.localPos += 1
+      if (this.localPos >= samplesPerPattern) this.localPos -= samplesPerPattern
       this.histWrite++
       if (this.histWrite >= H) this.histWrite = 0
     }

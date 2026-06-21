@@ -18,16 +18,16 @@
 5 セクション（Drive / Pitch / Glitch / Band / Master）。UI も同じ区切り（[SPEC.md](./SPEC.md) §6）。
 全体は **帯域スプリット**で挟む: `in → band/rest 分割 →` 下の段（band 側）`→ recombine(+Solo/Mute)`（§2b）。実処理順は上から下。
 
-| セクション | 段                 | 内容                                                                                                                 | パラメータ                                                     | ユニット            |
-| ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------- |
-| **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                               | Drive(200)                                                     | `dsp/saturation.ts` |
-| 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                   | —                                                              | 〃                  |
-| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替 | Drive 連動 / Comp(222)                                         | 〃                  |
-| 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                         | Tone(201)                                                      | 〃                  |
-| **Pitch**  | Wobble             | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）                                                                      | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207)       | `dsp/wobble.ts`     |
-| **Glitch** | ステップシーケンサ | ブロック(隣接)モデル・6タイプ(Dry/Glitch/Freeze/Reverse/Mute/Repeat)＋Random モード・BPM拍ロック・再現性             | Glitch(204)wet/On(217)/Random(290)/Step×16(223-238)/phase(239) | `dsp/glitch.ts`     |
-| **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                 | Output(202)                                                    | `distortion.ts`     |
-| Master     | Bypass             | 全体を dry へクロスフェード                                                                                          | Bypass(208)                                                    | 〃                  |
+| セクション | 段                 | 内容                                                                                                                  | パラメータ                                                            | ユニット            |
+| ---------- | ------------------ | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------- |
+| **歪み**   | Drive              | `x *= 10^(driveDb/20)`                                                                                                | Drive(200)                                                            | `dsp/saturation.ts` |
+| 歪み       | Hard Clip          | `clamp(x, -1, +1)`                                                                                                    | —                                                                     | 〃                  |
+| 歪み       | Drive makeup       | **入力レベルを見て** RMS＋知覚明るさを打ち消す（実効ドライブ a·Drive・即時）。Comp で envelope 速さ＝圧縮/保持を切替  | Drive 連動 / Comp(222)                                                | 〃                  |
+| 歪み       | Tone（Tilt EQ）    | 低/高を逆方向にゲイン（暗⇄明）＋ Tone makeup                                                                          | Tone(201)                                                             | 〃                  |
+| **Pitch**  | Wobble             | 可変ディレイのピッチのヨレ（Depth/Speed/Occur）                                                                       | Wobble(203)/Speed(210)/Occur(211)+bpm(209)/Pitch On(207)              | `dsp/wobble.ts`     |
+| **Glitch** | ステップシーケンサ | ブロック(隣接)モデル・6タイプ(Dry/Glitch/Freeze/Reverse/Mute/Repeat)＋Random モード・小節数1/2/4・BPM拍ロック・再現性 | Glitch(204)/On(217)/Random(290)/Bars(288)/Step×64(223-286)/phase(287) | `dsp/glitch.ts`     |
+| **Master** | Output Gain        | `y *= 10^(outDb/20)`                                                                                                  | Output(202)                                                           | `distortion.ts`     |
+| Master     | Bypass             | 全体を dry へクロスフェード                                                                                           | Bypass(208)                                                           | 〃                  |
 
 - セクション ON/OFF（Drive On=206 / Pitch On=207 / Glitch On=217）・Solo/Mute・Bypass(208) は **クリック回避のクロスフェード**（≈8ms 平滑）で切替（`distortion.ts`）。
 - 帯域スプリット（Band Lo=213 / Hi=214 / Solo=215 / Mute=216）は §2b。OS（Phase 3）は Hard Clip の前後に挿入予定（§4）。
@@ -168,23 +168,23 @@ data = lerp(buf[floor(w-delay)], next, frac)          // フラクショナル�
 
 ### Glitch — ステップシーケンサ（`dsp/glitch.ts`）⭐
 
-横=**16分ステップ(1小節)** / 縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。パターンがループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。タイプ enum: **0=Dry(空=素通り) / 1=Glitch(極短ラチェット) / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)**。
+横=**16分ステップ** / 縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。**ループ長＝`Bars(288)`(1/2/4 小節)** で可変＝パターン=`bars×16`(最大64) ステップでループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。タイプ enum: **0=Dry(空=素通り) / 1=Glitch(極短ラチェット) / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)**。
 
-**ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の継続長**（隣接で伸ばす＝追加操作なし）。`steps[]` 全16個が毎ブロック来るのでラン先頭で前方走査して `blockLen` を確定。ブロック頭で `blockStartWrite`(履歴位置)・chunk・Freeze スナップをラッチ。`blockPhase = localBarPos − blockStartPos`。
+**ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（**パターン頭でのみ分割＝小節跨ぎ可**）。**ブロック幅＝その効果の継続長**（隣接で伸ばす＝追加操作なし）。`steps[]`（最大64）が毎ブロック来るのでラン先頭で `patternSteps`(=bars×16) まで前方走査して `blockLen` を確定。ブロック頭で `blockStartWrite`(履歴位置)・chunk・Freeze スナップをラッチ。`blockPhase = localPos − blockStartPos`。
 
 **Random モード（トグル `glitchRandom`/290）**: グリッドを無視し、**全ステップで** seed=絶対step から `microKind∈{0 dry / 1 ラチェット / 2 逆 / 3 ハーフ}` を再抽選＝決定論ランダム（dry も混ざる・再現性あり）。ブロックモデルは使わずステップ独立。モード切替時は次ステップで再ラッチ。
 
 **拍同期（拍ロック＋サンプル精度＋ジッタ耐性）**:
 
 ```
-// App: posSec=positionSamples/sr(VST) または ctx.currentTime-start(Web); secPerBar=60/bpm*4(4/4)
-//      glitchPhase = (posSec mod secPerBar)/secPerBar  （0..1・小マグニチュード＝float精度安全）
-// worklet（glitch.ts）:
-samplesPerBar = sr*60*4/bpm;  hostBarPos = glitchPhase*samplesPerBar
-d = shortestDiff(hostBarPos, localBarPos, samplesPerBar)
-if |d| > SNAP_TOL(≈50ms): localBarPos = hostBarPos; 次サンプルで境界再ラッチ; resync フェード
-// 以降 localBarPos をサンプル毎に +1, samplesPerBar で wrap（サンプル精度の自走）
-stepIdx = floor(localBarPos / (samplesPerBar/16));  posInStep = localBarPos - stepIdx*stepLen
+// App: posSec=positionSamples/sr(VST) または ctx.currentTime-start(Web); secPerPattern=60/bpm*4*bars
+//      glitchPhase = (posSec mod secPerPattern)/secPerPattern  （0..1・小マグニチュード＝float精度安全）
+// worklet（glitch.ts）: stepLen=sr*60*4/bpm/16; samplesPerPattern=bars*16*stepLen
+hostPos = glitchPhase*samplesPerPattern
+d = shortestDiff(hostPos, localPos, samplesPerPattern)
+if |d| > SNAP_TOL(≈50ms): localPos = hostPos; 次サンプルで境界再ラッチ; resync フェード
+// 以降 localPos をサンプル毎に +1, samplesPerPattern で wrap（サンプル精度の自走）
+stepIdx = floor(localPos / stepLen);  posInStep = localPos - stepIdx*stepLen
 ```
 
 小ドリフトは無視＝**rAF(60Hz) ジッタを音に入れない**。大ドリフト（シーク/ループ/再生開始）だけスナップ。出力は測らない。
@@ -210,7 +210,7 @@ Repeat:  chunk=16分(stepLen) を継続長(ブロック幅)ぶんループ。幅
 
 `Glitch(204)`=全体 wet（既定100、空グリッド=全Dryで透過）。`Random(290)`=Random モード トグル。
 
-⚠️ Glitch は **loudness 後・band 内**で動作＝Reverse/Repeat は「歪んだ band 信号」のグレイン。4/4 前提(v1)。**同タイプ隣接は必ず融合**（独立した同タイプ短ブロック連打は不可・要ギャップ）。低BPM履歴・自動化レーン・停止中ホールドは [SPEC.md](./SPEC.md) §8。完全ランダムトグル/Tape-stop は後日。
+⚠️ Glitch は **loudness 後・band 内**で動作＝Reverse/Repeat は「歪んだ band 信号」のグレイン。4/4 前提(v1)。**同タイプ隣接は必ず融合**（独立した同タイプ短ブロック連打は不可・要ギャップ）。ブロックは**パターン頭でのみ分割**＝小節跨ぎブロック可。低BPM履歴・自動化レーン・停止中ホールドは [SPEC.md](./SPEC.md) §8。Tape-stop は後日。
 
 ### Output / Bypass（`distortion.ts`）
 

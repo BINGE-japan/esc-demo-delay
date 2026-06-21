@@ -49,8 +49,9 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 | 207     | Pitch On      | 0 / 1        | ON   | トグル     | —    | ピッチ     | ピッチセクションの ON/OFF                                             |
 | 204     | Glitch        | 0 〜 100     | 100  | 連続       | %    | グリッチ   | ステップシーケンサの全体 wet（intensity）                             |
 | 290     | Random        | 0 / 1        | OFF  | トグル     | —    | グリッチ   | Random モード（グリッド無視・全ステップ決定論ランダム・再現性あり）   |
+| 288     | Bars          | 1 / 2 / 4    | 2    | 選択(enum) | —    | グリッチ   | ループ長(小節数)。タブ切替で grid が bars×16 列に伸びる（`grid`）     |
 | 217     | Glitch On     | 0 / 1        | ON   | トグル     | —    | グリッチ   | グリッチセクションの ON/OFF                                           |
-| 223–238 | Step 1–16     | 0 〜 5       | 0    | 連続(enum) | —    | グリッチ   | type: 0Dry(空)/1Glitch/2Freeze/3Reverse/4Mute/5Repeat(16分)（`grid`） |
+| 223–286 | Step 1–64     | 0 〜 5       | 0    | 連続(enum) | —    | グリッチ   | type: 0Dry(空)/1Glitch/2Freeze/3Reverse/4Mute/5Repeat(16分)（`grid`） |
 | 213     | Band Lo       | 20 〜 20k    | 20   | 連続(log)  | Hz   | 帯域       | エフェクトをかける下限周波数                                          |
 | 214     | Band Hi       | 20 〜 20k    | 20k  | 連続(log)  | Hz   | 帯域       | エフェクトをかける上限周波数                                          |
 | 215     | Solo          | 0 / 1        | OFF  | トグル     | —    | 帯域       | 選択帯域だけ試聴                                                      |
@@ -59,20 +60,20 @@ denormalize 済みの実値で UI／DSP は扱い、VST 境界のみ normalized 
 | 208     | Bypass        | 0 / 1        | OFF  | トグル     | —    | マスター   | 全体バイパス（dry へクロスフェード）                                  |
 | —       | OS            | off/2x/4x    | 2x   | 構造的     | —    | （内部）   | Phase 3、AudioParam 外                                                |
 | 209     | (bpm)         | 20 〜 999    | 120  | 内部       | —    | （内部）   | UI/useParam なし。transport.tempo を供給（Wob Occur 用）              |
-| 239     | (glitchPhase) | 0 〜 1       | 0    | 内部       | —    | （内部）   | UI/useParam なし。App が小節内位相を供給（拍ロック用）                |
+| 287     | (glitchPhase) | 0 〜 1       | 0    | 内部       | —    | （内部）   | UI/useParam なし。App がパターン内位相を供給（拍ロック用）            |
 
 - **Drive**: 入力をクリッパに押し込む量。音量は**入力レベル連動の計算補正**（実効クリップ量 a·Drive で RMS＋知覚明るさを補正）で一定＝出力非測定・即時。クリップ前はゲインを相殺するので「ただの音量上げ」にならない（[DSP.md](./DSP.md) §2）。
 - **Comp**: 歪みの**コンプ感**の ON/OFF。ON=入力 envelope を遅く（操作点だけ追う）→ トランジェントがクリップで頭打ち＝**ダイナミクスレンジが自然に圧縮**（普通の歪み）。OFF=envelope 速い→**ダイナミクス保持**のまま歪む（クリーンな粒立ち）。ON は圧縮で下がる分をレベル補償トリム（クリップ量ゲート）で OFF/dry に近づける。どちらも音量恒常（vs Drive）は維持（[DSP.md](./DSP.md) §2）。
 - **Tone**: 暗⇄明の **Tilt EQ**（pivot 約 800Hz、±18dB）。中央フラット。Tone でも音量は一定（Tone makeup）。
 - **Wobble**: 可変ディレイのピッチのヨレ。**Depth**（揺れ幅）/ **Wob Speed**（揺れの速さ）/ **Wob Occur**（頻度。100%=常に、下げると「たまに」＝**BPM グリッドにシード付き判定で再現性あり**）（[DSP.md](./DSP.md) 段7）。
-- **Glitch（ステップシーケンサ・ブロックモデル）**: **横=16分ステップ(1小節)/縦=タイプ**のマス目。空セル=Dry(素通り)。**同一タイプの連続セル＝1ブロック（幅=その効果の継続長）**。タイプ: **Glitch(極短ラチェット) / Freeze / Reverse(幅=逆レンジ) / Mute / Repeat(16分ビートリピート)**。BPM同期・**拍ロック**（VST=曲の小節頭=ステップ1、Web=再生開始基準）でパターンがループ＝**再現性**。`Glitch(204)`=全体 wet（空グリッド=全Dryで透過）。`Random(290)`=**Random モード**（グリッド無視・全ステップ決定論ランダム・dry も混ざる・再現性あり）。Tape-stop は後日（[DSP.md](./DSP.md) §3 Glitch）。
+- **Glitch（ステップシーケンサ・ブロックモデル）**: **横=16分ステップ/縦=タイプ**のマス目。空セル=Dry(素通り)。**同一タイプの連続セル＝1ブロック（幅=その効果の継続長・小節跨ぎ可）**。タイプ: **Glitch(極短ラチェット) / Freeze / Reverse(幅=逆レンジ) / Mute / Repeat(16分ビートリピート)**。**`Bars(288)`=ループ長(1/2/4 小節)をタブで選択**＝グリッドが bars×16 列に伸び、その長さでループ。BPM同期・**拍ロック**（VST=曲頭基準、Web=再生開始基準）でパターンがループ＝**再現性**。`Glitch(204)`=全体 wet（空グリッド=全Dryで透過）。`Random(290)`=**Random モード**（グリッド無視・全ステップ決定論ランダム・dry も混ざる・再現性あり）。Tape-stop は後日（[DSP.md](./DSP.md) §3 Glitch）。
 - **Band（Focus）**: エフェクトをかける周波数帯を選ぶ。`band = bandpass(in, Lo, Hi)`、`rest = in − band`（完全再構成）。**帯域内=100%Wet / 帯域外=100%Dry**。**Solo**=帯域だけ試聴 / **Mute**=帯域を抜いた残りだけ試聴。全エフェクト一括（[DSP.md](./DSP.md) §2b）。
 - **Drive On / Pitch On / Glitch On / Bypass**: クリック回避のクロスフェードで切替（[DSP.md](./DSP.md) §1）。
 - **(bpm)**: 内部 AudioParam。UI/useParam は無く、App が `transport.tempo` を流し込む（Wob Occur の BPM 準拠に使用）。
-- **(glitchPhase)**: 内部 AudioParam。App が `positionSamples`(VST)/`ctx.currentTime`(Web) から小節内位相(0..1)を算出し供給（Glitch ステップの拍ロック）。
+- **(glitchPhase)**: 内部 AudioParam。App が `positionSamples`(VST)/`ctx.currentTime`(Web) からパターン内位相(0..1・パターン長=bars×16)を算出し供給（Glitch ステップの拍ロック）。
 - **OS**: 音質設定。構造を変えるため **AudioParam でなく構築時設定**＋グラフ再構築。VST 自動化対象外。
 
-> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-204＋210/211＋213/214、トグル 206-208＋215-217＋222(Comp)＋290(Random)、**ステップ 223–238(`grid`・enum 0..5)**、内部 bpm=209・glitchPhase=239。**廃止/欠番: 205=旧 Auto Gain / 212=旧 Spectral Fill / 218・219・220=旧 Howl 系 / 221=反映されなかった実験の名残**＝再利用しない）。`grid` フラグ＝useParam は作るが自動スライダに出さず StepGrid が描画。値は v0.3 提案 — レビューで確定。
+> ⚠️ **パラメータID は controller の `addParameter` tag と SSoT**。既存規約: synth `0..5`、saturator `100..102`。本プラグインは **200番台**（連続 200-204＋210/211＋213/214、トグル 206-208＋215-217＋222(Comp)＋290(Random)、Bars=288(`grid`)、**ステップ 223–286(`grid`・enum 0..5・最大64)**、内部 bpm=209・glitchPhase=287。**廃止/欠番: 205=旧 Auto Gain / 212=旧 Spectral Fill / 218・219・220=旧 Howl 系 / 221=反映されなかった実験の名残 / 239=旧 glitchPhase(287へ移設)**＝再利用しない）。`grid` フラグ＝useParam は作るが自動スライダに出さず StepGrid が描画。値は v0.3 提案 — レビューで確定。
 
 ## 5. 信号フロー（最終形の目標）
 
@@ -87,7 +88,7 @@ in ─┬─ bandpass(Lo..Hi) → band → [Drive→Clip→makeup(RMS+知覚)→
 
 ## 6. UI
 
-- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **5 セクション（Drive / Pitch / Glitch / Band(Focus) / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（各 ON / Comp / Solo / Mute / Bypass）はスイッチ。Glitch セクションには **ステップシーケンサ（[StepGrid.vue](../src/components/StepGrid.vue)・16列×5行）** を表示（`grid` param をスライダでなくグリッドで描画、再生中ステップをハイライト）。**両 runtime に存在**。現状は仮UI。本UI（パラメータ×UI の作り込み）はこれから。
+- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **5 セクション（Drive / Pitch / Glitch / Band(Focus) / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（各 ON / Comp / Solo / Mute / Bypass）はスイッチ。Glitch セクションには **ステップシーケンサ（[StepGrid.vue](../src/components/StepGrid.vue)・小節数タブ＋bars×16 列×5行）** を表示（`grid` param をスライダでなくグリッドで描画、再生中ステップをハイライト）。**両 runtime に存在**。現状は仮UI。本UI（パラメータ×UI の作り込み）はこれから。
 - **DAW simulator（[SuaraHostPanel.vue](../src/sdk/helper/SuaraHostPanel.vue)）**: Web runtime のみ。再生・入力ソース・レベル・MIDI を供給する DAW 代役。**プラグインのノブはここに足さない**（混同回避）。
 - MVP の見た目は最小（range スライダ可）。専用ノブ部品は後フェーズで検討。
 

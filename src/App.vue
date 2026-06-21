@@ -41,8 +41,11 @@ const grouped = SECTIONS.map((s) => ({
   items: uiParams.filter((u) => u.def.section === s.key && !u.def.grid),
 }))
 
-// ステップシーケンサ: 16 ステップのハンドル（PARAMS 順 = step0..15）と再生中ステップ。
-const stepHandles = uiParams.filter((u) => u.def.grid).map((u) => u.handle)
+// ステップシーケンサ: ステップ(step0..63)・小節数(glitchBars)ハンドルと再生中ステップ。
+const stepHandles = uiParams
+  .filter((u) => u.def.grid && u.def.name.startsWith('step'))
+  .map((u) => u.handle)
+const barsHandle = uiParams.find((u) => u.def.name === 'glitchBars')!.handle
 const currentStep = ref(0)
 
 let ctx: AudioContext | null = null
@@ -129,15 +132,17 @@ function pumpPhase(): void {
   phaseRaf = 0
   if (!ctx || !playing.value) return
   const tempo = transport.state.tempo || 120
-  const secPerBar = (60 / tempo) * 4
+  const bars = Math.min(4, Math.max(1, Math.round(barsHandle.value)))
+  const steps = bars * 16
+  const secPerPattern = (60 / tempo) * 4 * bars
   const posSec =
     runtime.isVst && transport.state.positionSamples > 0
       ? transport.state.positionSamples / ctx.sampleRate
       : ctx.currentTime - webStart
-  let phase = (posSec % secPerBar) / secPerBar
+  let phase = (posSec % secPerPattern) / secPerPattern
   if (phase < 0) phase += 1
   applyParam('glitchPhase', phase)
-  currentStep.value = Math.min(15, Math.floor(phase * 16))
+  currentStep.value = Math.min(steps - 1, Math.floor(phase * steps))
   phaseRaf = requestAnimationFrame(pumpPhase)
 }
 function startPhasePump(): void {
@@ -259,7 +264,12 @@ onBeforeUnmount(teardown)
         </template>
 
         <!-- グリッチ・ステップシーケンサ（横=16分ステップ / 縦=タイプ）。仮UI、後で整形。 -->
-        <StepGrid v-if="g.key === 'glitch'" :steps="stepHandles" :current="currentStep" />
+        <StepGrid
+          v-if="g.key === 'glitch'"
+          :steps="stepHandles"
+          :bars="barsHandle"
+          :current="currentStep"
+        />
       </section>
     </div>
 

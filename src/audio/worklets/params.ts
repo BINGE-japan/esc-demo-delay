@@ -154,12 +154,25 @@ export const PARAMS: ParamDef[] = [
     section: 'glitch',
     toggle: true,
   },
-  // ステップ 0..15（16分・1小節）。値=タイプ enum:
+  // 小節数（ループ長）: 1/2/4 小節をタブで選択。パターン=bars*16 ステップで反復。
+  // grid:true で自動スライダから除外し、StepGrid がタブ＋bars*16 列を描画。
+  {
+    id: 288,
+    name: 'glitchBars',
+    label: 'Bars',
+    min: 1,
+    max: 4,
+    default: 2,
+    unit: '',
+    section: 'glitch',
+    grid: true,
+  },
+  // ステップ 0..63（16分）。パターン長=bars*16（最大4小節=64）。値=タイプ enum:
   //   0=Dry(空) / 1=Glitch(ラチェット) / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat(16分)
-  // 隣接する同一値＝1ブロック（幅=継続長）。
-  // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–238。
+  // 隣接する同一値＝1ブロック（幅=継続長・小節跨ぎ可、パターン頭でのみ分割）。
+  // grid:true ＝ useParam は作るが自動スライダに出さず StepGrid が描画。id 223–286。
   ...Array.from(
-    { length: 16 },
+    { length: 64 },
     (_, i): ParamDef => ({
       id: 223 + i,
       name: `step${i}`,
@@ -251,9 +264,9 @@ export const PARAMS: ParamDef[] = [
     section: 'master',
     hidden: true,
   },
-  // 小節内の位相 0..1（App が positionSamples mod 小節長 から算出）。Glitch のステップ拍ロック用。
+  // パターン内の位相 0..1（App が positionSamples mod パターン長 から算出）。Glitch の拍ロック用。
   {
-    id: 239,
+    id: 287,
     name: 'glitchPhase',
     label: 'Glitch Phase',
     min: 0,
