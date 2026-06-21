@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // Glitch ステップシーケンサの仮UI（横=8分カラム / 縦=タイプ）。
 // セル値(raw)= ベース型(下位3bit) | Dive(bit3=8)。ベースは排他、Dive だけ重ねがけ（Mute には不可）。
-// 表示カラム=8分。1クリックで内部16分スロット2個をペイント。横連結=長さ。内部/スナップは16分。
-// 行: Dive(モディファイア・別色) / Rpt/Rev/Frz/Glt(ベース・排他) / Mute(最下段・別色・排他/Dive クリア)。
+// 表示カラム=8分。1クリック/ドラッグでペイント（横になぞって伸縮）。内部/スナップは16分。
+// 行: Dive(モディファイア・sky色) / Rpt/Rev/Frz/Glt(ベース・排他・emerald) / Mute(最下段・rose色・排他)。
 //   ベース 0=Dry(空) / 1=Glitch / 2=Freeze / 3=Reverse / 4=Mute / 5=Repeat。
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import type { ParamHandle } from '@suara/sdk'
 import { STEPS_PER_BAR, MAX_BARS, clampBars } from '../audio/worklets/params'
 
@@ -35,6 +35,9 @@ const EIGHTHS_PER_BAR = STEPS_PER_BAR / 2 // 表示は8分カラム（内部16�
 const barCount = computed(() => clampBars(props.bars.value))
 const cols = computed(() => barCount.value * EIGHTHS_PER_BAR)
 
+// ドラッグペイント状態（なぞって伸縮）。同一行内のみ適用。
+let paint: { row: Row; add: boolean } | null = null
+
 function rawAt(dc: number): number {
   const h = props.steps[2 * dc]
   return h ? Math.round(h.value) : 0
@@ -52,22 +55,41 @@ function writeRaw(dc: number, raw: number): void {
     h.end()
   }
 }
-function setCell(dc: number, row: Row): void {
+// add=true で付与、false で除去。ベース排他・Dive 重ね・Mute は Dive クリア。
+function applyCell(dc: number, row: Row, add: boolean): void {
   const raw = rawAt(dc)
-  const base = raw & BASE_MASK
-  const dive = (raw & DIVE_BIT) !== 0
-  let next: number
+  let base = raw & BASE_MASK
+  let dive = (raw & DIVE_BIT) !== 0
   if (row.kind === 'dive') {
     if (base === MUTE) return // Mute には Dive 不可
-    next = base | (dive ? 0 : DIVE_BIT)
+    dive = add
+  } else if (row.kind === 'mute') {
+    if (add) {
+      base = MUTE
+      dive = false
+    } else if (base === MUTE) base = 0
   } else {
-    // ソース/Mute=排他ベース。トグル。Mute は Dive をクリア、他はベース変更で Dive 維持。
-    const nextBase = base === row.val ? 0 : row.val
-    const nextDive = row.val === MUTE ? 0 : dive ? DIVE_BIT : 0
-    next = nextBase | nextDive
+    if (add)
+      base = row.val // ベース変更で Dive 維持
+    else if (base === row.val) base = 0
   }
-  writeRaw(dc, next)
+  const next = base | (dive ? DIVE_BIT : 0)
+  if (next !== raw) writeRaw(dc, next)
 }
+function onDown(dc: number, row: Row): void {
+  const add = !active(dc, row) // クリック=トグル、ドラッグ=同方向に伸縮
+  paint = { row, add }
+  applyCell(dc, row, add)
+}
+function onEnter(dc: number, row: Row): void {
+  if (paint && paint.row === row) applyCell(dc, row, paint.add)
+}
+function endPaint(): void {
+  paint = null
+}
+onMounted(() => window.addEventListener('pointerup', endPaint))
+onBeforeUnmount(() => window.removeEventListener('pointerup', endPaint))
+
 function setBars(n: number): void {
   props.bars.begin()
   props.bars.setFromUser(n)
@@ -81,7 +103,6 @@ function gap(col: number): string {
   if (col % 2 === 0) return 'ml-0.5'
   return ''
 }
-// 行ごとのアクティブ配色（Dive=sky / Mute=rose / ソース=emerald）。
 function cellClass(dc: number, row: Row): string {
   if (!active(dc, row)) return 'border-neutral-800 bg-neutral-900 hover:bg-neutral-800'
   if (row.kind === 'dive') return 'border-sky-400/70 bg-sky-500/70'
@@ -111,7 +132,7 @@ function cellClass(dc: number, row: Row): string {
         </button>
       </div>
     </div>
-    <div class="flex flex-col gap-px">
+    <div class="flex select-none flex-col gap-px">
       <div
         v-for="row in ROWS"
         :key="row.label"
@@ -125,13 +146,14 @@ function cellClass(dc: number, row: Row): string {
           v-for="s in cols"
           :key="s"
           type="button"
-          class="h-4 w-4 shrink-0 rounded-[2px] border transition-colors"
+          class="h-4 w-4 shrink-0 touch-none rounded-[2px] border transition-colors"
           :class="[
             cellClass(s - 1, row),
             gap(s - 1),
             playing(s - 1) ? 'ring-1 ring-amber-400/80' : '',
           ]"
-          @click="setCell(s - 1, row)"
+          @pointerdown.prevent="onDown(s - 1, row)"
+          @pointerenter="onEnter(s - 1, row)"
         />
       </div>
     </div>

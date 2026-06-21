@@ -84,7 +84,7 @@ in ─┬─ bandpass(Lo..Hi) → band → [Drive→Clip→makeup(RMS+知覚)→
 
 ## 6. UI
 
-- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **4 セクション（信号フロー順 = Band(Focus) / Drive / Glitch / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（各 ON / Comp / Solo / Mute / Bypass）はスイッチ。Glitch セクションには **ステップシーケンサ（[StepGrid.vue](../src/components/StepGrid.vue)・小節数タブ＋bars×8 カラム×6行・セルは固定幅＝幅が要れば横に伸びてプラグイン幅が広がる）** ＋ Pitch ノブを表示（`grid` param をスライダでなくグリッドで描画、再生中ステップをハイライト）。**両 runtime に存在**。現状は仮UI。本UI（パラメータ×UI の作り込み）はこれから。
+- **プラグインUI（[App.vue](../src/App.vue) 本体）**: [params.ts](../src/audio/worklets/params.ts) 駆動で **4 セクション（信号フロー順 = Band(Focus) / Drive / Glitch / Master）**に分けて表示。連続パラメータはスライダ（周波数は log）、トグル（各 ON / Comp / Solo / Mute / Bypass）はスイッチ。Glitch セクションには **ステップシーケンサ（[StepGrid.vue](../src/components/StepGrid.vue)・小節数タブ＋bars×8 カラム×6行・横ドラッグでなぞって伸縮・固定幅で幅が要れば横に伸びる）** ＋ Pitch ノブを表示（`grid` param をスライダでなくグリッドで描画、再生中ステップをハイライト）。**両 runtime に存在**。現状は仮UI。本UI（パラメータ×UI の作り込み）はこれから。
 - **DAW simulator（[SuaraHostPanel.vue](../src/sdk/helper/SuaraHostPanel.vue)）**: Web runtime のみ。再生・入力ソース・レベル・MIDI を供給する DAW 代役。**プラグインのノブはここに足さない**（混同回避）。
 - MVP の見た目は最小（range スライダ可）。専用ノブ部品は後フェーズで検討。
 
