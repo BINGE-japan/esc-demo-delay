@@ -14,20 +14,20 @@ SDK の詳細は [src/sdk/index.ts](../src/sdk/index.ts) 参照。本書は **�
 
 DSP は**ユニット分割**（後から各要素を調整しやすく。[DSP.md](./DSP.md) §1/§6）。
 
-| パス                                                                            | 役割                                                                                                                        | 触る頻度 |
-| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------- |
-| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                                                                        | 高       |
-| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                                                                            | 高       |
-| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）                                                                | 高       |
-| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                                                                 | 中       |
-| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                                                          | 中       |
-| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                                                          | 中       |
-| [src/audio/worklets/dsp/pitch.ts](../src/audio/worklets/dsp/pitch.ts)           | Pitch（Vinyl Warp 風＝可変ディレイ×glitchPhase ロックの決定論ワウ）                                                         | 中       |
-| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接・raw=ベース6型\|Dive重ね・拍ロック・Random）＋Freeze Ice Reverb(FDN)             | 中       |
-| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch シーケンサ UI（クリップ式・8分カラム/内部16分・クリック16分作成/左右ドラッグ伸縮/クリック消去・Dive重ね/Mute最下段） | 中       |
-| [src/components/BandRange.vue](../src/components/BandRange.vue)                 | 帯域 Lo/Hi の2ポイント1本スライダ UI（log・近い thumb を掴んで移動・lo≤hi クランプ）                                        | 中       |
-| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                                             | 低       |
-| `docs/`                                                                         | 仕様の SSoT                                                                                                                 | 高       |
+| パス                                                                            | 役割                                                                                                                                | 触る頻度 |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| [src/App.vue](../src/App.vue)                                                   | グラフ構築・UI（params.ts 駆動・セクション）・橋渡し                                                                                | 高       |
+| [src/audio/worklets/params.ts](../src/audio/worklets/params.ts)                 | **パラメータ定義 SSoT**（worklet と App が共有）                                                                                    | 高       |
+| [src/audio/worklets/distortion.ts](../src/audio/worklets/distortion.ts)         | worklet 本体＝組み立て役（セクション/Bypass クロスフェード）                                                                        | 高       |
+| [src/audio/worklets/dsp/band.ts](../src/audio/worklets/dsp/band.ts)             | 帯域スプリット（4-pole TPT SVF バンドパス）                                                                                         | 中       |
+| [src/audio/worklets/dsp/saturation.ts](../src/audio/worklets/dsp/saturation.ts) | 歪み（Drive→Clip→makeup(RMS+知覚)→Tone）。**音量恒常はここで完結**                                                                  | 中       |
+| [src/audio/worklets/dsp/weighting.ts](../src/audio/worklets/dsp/weighting.ts)   | 知覚重み付け（明るさの音量換算）。Drive 知覚 makeup 表の構築に使用                                                                  | 中       |
+| [src/audio/worklets/dsp/pitch.ts](../src/audio/worklets/dsp/pitch.ts)           | Pitch（Vinyl Warp 風＝可変ディレイ×glitchPhase ロックの決定論ワウ）                                                                 | 中       |
+| [src/audio/worklets/dsp/glitch.ts](../src/audio/worklets/dsp/glitch.ts)         | グリッチ・ステップシーケンサ（ブロック隣接・raw=ベース6型\|Dive重ね・拍ロック・Random）＋Freeze(フェードリピート＋追従＋ピンク＋EQ) | 中       |
+| [src/components/StepGrid.vue](../src/components/StepGrid.vue)                   | Glitch シーケンサ UI（クリップ式・8分カラム/内部16分・クリック16分作成/左右ドラッグ伸縮/クリック消去・Dive重ね/Mute最下段）         | 中       |
+| [src/components/BandRange.vue](../src/components/BandRange.vue)                 | 帯域 Lo/Hi の2ポイント1本スライダ UI（log・近い thumb を掴んで移動・lo≤hi クランプ）                                                | 中       |
+| [src/sdk/](../src/sdk/)                                                         | SDK（runtime 抽象）。原則編集しない（vendored）                                                                                     | 低       |
+| `docs/`                                                                         | 仕様の SSoT                                                                                                                         | 高       |
 
 - 各 DSP ユニットは `class`＋`constructor(sampleRate)`。音作りの定数は**ユニット冒頭**に集約。
 - `distortion.ts` は入力を dry に退避し、各ユニットを順に呼び、セクション ON/OFF・Bypass を**クロスフェード**で合成（[DSP.md](./DSP.md) §1）。
@@ -79,7 +79,7 @@ worklet 内のセクション順は [DSP.md](./DSP.md) §1。HMR は worklet 変
   - トグル: Bypass=208, Solo=215, Glitch On=217, Random=290（Drive 段・Comp は常時 ON で固定＝トグルなし）
   - `grid`（自動スライダ外・StepGrid 描画）: Bars=288（ループ長 1/2/4 小節）/ Step 1–64 = 223–286（raw 0..13＝ベース(0Dry/1Glitch/2Freeze/3Reverse/4Mute/5Repeat)|Dive(8)。クリップ式・8分カラム/内部16分）
   - 帯域 Lo/Hi は専用 UI [BandRange.vue](../src/components/BandRange.vue)（1本スライダ＋2 thumb）が描画。useParam ハンドルは App が生成しコンポーネントへ渡す（`grid` ではない＝自動スライダ判定は section+unit で除外）
-  - Freeze Ice Reverb(FDN) の係数は `glitch.ts` に定数化（Decay/Diffuse/Size/Tone/Mix。旧デバッグ param 291-295 は撤去・2026-06-21）
+  - Freeze（フェードリピート長/音量/ピンクノイズ/後段EQ）の係数は `glitch.ts` に定数化（旧デバッグ param 291-293 は撤去・2026-06-22）
   - 内部: bpm=209（App が `transport.tempo` を供給）/ glitchPhase=287（App がパターン内位相 0..1 を供給）。どちらも `hidden:true`・UI/useParam なし
   - 廃止/欠番: 203・210・211＝旧 Wobble 系（2026-06-21）/ 205＝旧 Auto Gain（2026-06-21）/ 206＝旧 Drive On（常時ON化、2026-06-21）/ 207＝旧 Pitch On→Octave（共に撤去、2026-06-21）/ 212＝旧 Spectral Fill（2026-06-21）/ 216＝旧 Band Mute（撤去、2026-06-21）/ 218・219・220＝旧 Howl 系（2026-06-21）/ 221＝実験の名残 / 222＝旧 Comp（常時ON化、2026-06-21）/ 239＝旧 glitchPhase（287 へ移設）/ 291-295＝各種 DEBUG の名残（Pitch/Dive/Freeze Ice Reverb・いずれも定数化で撤去、2026-06-21）。再利用しない（VST tag 衝突回避）。204 は旧 Glitch wet→Pitch に転用（2026-06-21）
 - Web runtime では `id` は read/write されず knob のローカル状態のみ。VST 配線時に controller 側 tag と突き合わせる。

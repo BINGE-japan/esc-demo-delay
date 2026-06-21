@@ -192,15 +192,12 @@ stepIdx = floor(localPos / stepLen);  posInStep = localPos - stepIdx*stepLen
 ```
 Dry:     fx = dry（空セル）
 Glitch:  grain = 1/32音符の極短スライスをループ＝ラチェット/アーティファクト（chunk 固定）
-Freeze:  ブロック頭で直近 FREEZE_REGION(=730ms) を凍結バッファにスナップ→重なり合う窓化グレイン
-         (FREEZE_GRAIN=120ms・FREEZE_VOICES=12・overlap=8・読み位置±JITTER≈50ms) を Hann 窓で
-         重ね合わせ、**窓和で正規化**（包絡一定＝トレモロ/粒を抑制、立上り floor で増幅回避）→
-         GAIN(=2.4)＝滑らかな持続音(グラニュラー雲)。これを**励起源に Ice Reverb(FDN)**へ:
-         入力 allpass×2(ディフュージョン)→4ライン FDN(Hadamard 直交FB・各FBに 1-pole damping)
-         →Mix で雲とブレンド→**4-pole HP(24dB/oct・iceberg・310Hz 固定・Freeze の wet のみ)で低域カット**。
-         Guitar Rig Iceverb 風の“コー”（拡散残響＋金属/氷の煌めき）。FDN 係数は**耳で確定し定数化**
-         （Decay=0.12/Diffuse=0.70/Size=0.31(小=金属的)/Tone=0.73(高=氷)/Mix=0.14）。
-         Hadamard は直交(||=1)＝FBゲイン<0.97 で BIBO 安定。凍結ごとに残響・HP をリセット（テール非継承）
+Freeze:  ブロック頭で直近 FREEZE_LOOP_MS(=126ms) を掴み、**オーバーラップ crossfade ループ**で持続音化。
+         2読み位置を L/2 ずらし Hann 窓（w1+w2=1）で混ぜる＝継ぎ目クリックもチャンクのアタック起伏も平坦化
+         （短いほどループ周期が可聴ピッチ域＝持続トーン寄り）。→ **原音(dry)追従ゲイン**（出力を inEnv×Level
+         に正規化＝入力でバラつかず一定。Level=0.55・上限 +15dB クランプ）→ **ピンクノイズ**(エア・Noise=0.28・
+         Kellet economy で -3dB/oct) を加算 → **後段 EQ**（RBJ biquad ×3: HP370 → ピーク1.2k(+14dB Q2.2)
+         → ハイシェルフ3k(-7.2dB Q1)）。耳で確定し定数化（2026-06-22）。凍結ごとに EQ・ピンク状態をリセット
 Reverse: hist[blockStartWrite − blockPhase]（revLen=ブロック幅）＝直前ブロック幅を逆再生
 Mute:    gate（中央=無音・両端 FADE）
 Repeat:  chunk=16分(stepLen) を継続長(ブロック幅)ぶんループ。幅>16分 で連続ループに聞こえる

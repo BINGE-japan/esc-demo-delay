@@ -82,6 +82,7 @@ class DistortionProcessor extends AudioWorkletProcessor implements AudioWorkletP
     const gliRandom = parameters.glitchRandom[0] >= 0.5
     const gliBars = parameters.glitchBars[0]
     const glitchPhase = parameters.glitchPhase[0]
+    // Freeze の長さ/音量/エア/ピンクノイズ/後段EQ は耳で確定し glitch.ts に定数化（旧 debug 291-293 撤去）。
     for (let s = 0; s < MAX_STEPS; s++) {
       const p = parameters['step' + s]
       const v = p ? Math.round(p[0]) : 0
