@@ -415,4 +415,11 @@ DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定�
 **影響**: `dsp/glitch.ts`（FREEZE 定数確定・freezeHpProcess 追加）、`params.ts`（debug param なし＝据置）、`distortion.ts`・`App.vue` 実質変化なし。DSP §3 Freeze 更新。`vp check`(22)/`vp build` 通過。
 **学び**: グラニュラー freeze は**長グレインで滑らか・短グレインで質感**のトレードオフ（確定は短め120ms＋HP で iceberg 寄り）。固定 hop 由来の振幅周期は**窓和正規化**で消えるので GAIN 調整が素直になる。質感フィルタは**該当タイプの wet のみ**に閉じる（全体に漏らさない）。
 
+### 2026-06-21 — Comp ON トリムの Drive 連動を緩和（Drive で大きくなる問題）
+
+**決定**: Comp ON のレベル補償トリムを `COMP_TRIM_DB 7→4` / `COMP_TRIM_FULL_DB 12→6`。
+**理由**: ユーザー指摘「Drive を上げると（Comp ON で）また音量が大きくなる」。A/B で確認＝犯人はこのトリム。トリムは `geffDb`(実効ドライブ dB)に比例して 0→最大へ伸びるため、Drive を回すほど持ち上げが増えていた。`FULL` を 6dB に下げて**早期プラトー**化＝中〜高 Drive では一定にし Drive 連動の伸びを止める。最大量も 7→4 に低減。
+**影響**: `dsp/saturation.ts`（定数2つ）。DSP §2 更新。makeup 本体（`a·fullMakeup(geff)`）は Drive 不変なので、Comp OFF はもともとフラット。絶対レベル（ON/OFF 差）は要再試聴で再調整しうる。
+**学び**: ラウドネス一定の土台は FF makeup で取れている。Comp トリムを**クリップ量比例**にすると Drive=音量になってしまう→**早期プラトー**で「効くが Drive には連動しない」形にするのが筋。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

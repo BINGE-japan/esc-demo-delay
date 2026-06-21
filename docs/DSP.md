@@ -63,7 +63,7 @@ a = max(env, 1e-6)                        // 入力振幅推定（正弦近似�
 
 - **Comp OFF（ダイナミクス保持）= 速い**（ATK 5ms / REL 150ms）。`a` がトランジェントに追従 → makeup が各音を再レベル → クリップが潰した分を持ち上げ直す＝**出力ダイナミクス≈入力**（クリーンな粒立ち・歪んでもレンジ残る）。
 - **Comp ON（自然圧縮・既定）= 遅い**（ATK 250ms / REL 400ms）。`a` は操作点＝サステインのレベルだけ追い、**トランジェントは動かさない** → トランジェントは `clip` で頭打ち＝**ダイナミクスレンジが圧縮**（普通の歪み）。サステイン（≈a, クリップ前）は makeup=1/driveLin で入力レベル維持＝**レベル感は一定**。Drive↑で頭打ちが下がる＝圧縮が増える。
-- **Comp ON のレベル補償（ざっくり一律トリム）**: 圧縮でピークが潰れる分、Comp OFF（≒dry）より RMS が下がる。そこで Comp ON のみ `makeup` に最大 `COMP_TRIM_DB`(既定7dB・耳調整) のトリムを足して OFF/dry に近づける（＝コンプの makeup gain・密度感）。**クリップ量(操作点 Geff の dB)でゲート**し、`Geff≤0dB`（歪んでない）→0、`COMP_TRIM_FULL_DB`(≈12dB) 以上→最大。低 Drive では中立（bypass 近接を壊さない）。Drive に即時（geffDb は driveLin で即更新）。簡易近似なので素材により残差あり（耳調整: `COMP_TRIM_DB`/`COMP_TRIM_FULL_DB`）。
+- **Comp ON のレベル補償（ざっくり一律トリム）**: 圧縮でピークが潰れる分、Comp OFF（≒dry）より RMS が下がる。そこで Comp ON のみ `makeup` に最大 `COMP_TRIM_DB`(既定4dB・耳調整) のトリムを足して OFF/dry に近づける（＝コンプの makeup gain・密度感）。**クリップ量(操作点 Geff の dB)でゲート**し、`Geff≤0dB`（歪んでない）→0、`COMP_TRIM_FULL_DB`(=6dB) 以上→最大で**以降一定**。低 Drive では中立（bypass 近接を壊さない）。`FULL` を低く（12→6）して**早期プラトー**にし「Drive を上げるほど Comp ON が大きくなる」を抑えた（2026-06-21）。簡易近似なので素材により残差あり（耳調整: `COMP_TRIM_DB`/`COMP_TRIM_FULL_DB`）。
 - どちらも `a` は入力由来＝Drive 操作に遅延ゼロ・出力非測定（swell/duck なし）。トグル切替は coef を変えるだけ＝state 連続＝クリック無し。`ENV_*_(SLOW_)MS` は耳調整。
 
 ### Drive makeup（RMS、`dsp/saturation.ts`）

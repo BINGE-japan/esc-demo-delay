@@ -37,8 +37,10 @@ const ENV_REL_SLOW_MS = 400 // 圧縮(Comp ON) release
 // Comp ON のレベル補償（ざっくり一律トリム）: 圧縮でピークが潰れ RMS が下がる分を持ち上げて
 // Comp OFF/dry にレベルを近づける。クリップ量(操作点 Geff dB)でゲート＝Drive を絞った中立時は効かない
 // （bypass 近接を壊さない）。Geff 0dB→0、COMP_TRIM_FULL_DB 以上で最大 COMP_TRIM_DB（耳調整）。
-const COMP_TRIM_DB = 7 // 最大トリム（耳調整。試聴で 7 に）
-const COMP_TRIM_FULL_DB = 12 // この実効ドライブ(dB)で最大トリムに達する
+// 2026-06-21: 「Drive を上げるほど Comp ON が大きくなる」を緩和。トリムを**早期プラトー**(FULL 12→6)
+// させ、Drive 連動の伸びを止める＋最大量も低減(7→4)。絶対レベルは要再試聴。
+const COMP_TRIM_DB = 4 // 最大トリム（耳調整）
+const COMP_TRIM_FULL_DB = 6 // この実効ドライブ(dB)で最大トリムに達し以降一定（Drive 連動を抑える）
 
 const dbToLin = (db: number): number => Math.pow(10, db / 20)
 
