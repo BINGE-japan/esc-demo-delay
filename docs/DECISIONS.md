@@ -393,4 +393,26 @@
 **影響**: `dsp/glitch.ts` 全面（per-step→ブロック・ディスパッチ、9タイプ）。`params.ts`（step max 4→8・enum コメント・Fill→Mute 注）。`StepGrid.vue`（9行）。`distortion.ts` は不変（steps 0..8 round）。SPEC §4 / DSP §1,§3 / ARCHITECTURE §2,§5 / TASKS を更新。`vp check`(22)/`vp build` 通過。
 **学び**: 「per-placement で2軸自由」を行/ノブ肥大なしで＝**継続長は隣接(ブロック幅)・chunk はセル enum**。ループ系は「chunk×継続長」を分けて考えると設計が決まる。業界は chunk=グローバルが主流だが、グリッドなら per-cell enum が最も自由かつ素直。
 
+### 2026-06-21 — Freeze をグラニュラー化 / Random をステップ毎再抽選（Stage A: DSP 先行）
+
+試聴の壁打ちで判明した2問題への対応。UI 構造（Repeat 行集約・Dry 行削除・小節数セレクタ）は Stage B で別途。
+
+- **Freeze ≒ Glitch 問題**: 旧 Freeze は「70ms チャンク1個をシーム crossfade でループ」＝**構造的にコムフィルタ**でループ周期(≈14Hz)が可聴＝ただのスタッター。Glitch と機構が同一だった。リサーチ(Clouds/SC Warp1/Tone.js GrainPlayer/PaulStretch、dblue・Effectrix・Beat Repeat・Gross Beat は freeze と stutter を**別モジュール**で分離)。**決定**: Freeze を**非同期グラニュラー雲**に置換。ブロック頭で直近 FREEZE_REGION(≈400ms) を凍結バッファにスナップ→重なり合う Hann 窓グレイン(FREEZE_GRAIN≈180ms・FREEZE_VOICES=6・overlap=4・読み位置±JITTER≈60ms・決定論 seed)で**単一周期を消した持続音**に。Glitch は短スライス1ループ＝ラチェットのまま＝両者が構造的に別物に。スペクトル(FFT)Freeze は ~20ms レイテンシ＋framing 配管が要るので将来の "glass" モードとして温存。
+- **Random 連続＝Repeat 問題**: ブロックモデルで Random 連続セルが1ブロックになり、ブロック単位の1回抽選を幅ぶんループ＝Repeat と区別不能だった。**決定**: Random は**ブロック内でもステップ毎に seed=絶対step で再抽選**（microKind∈{ラチェット/逆/ハーフ}）。幅=暴れる継続長は保ちつつ中身が毎1/16変化＝均一ループの Repeat と明確に別物。決定論なので再現性は維持。
+
+**影響**: `dsp/glitch.ts`（Freeze=グラニュラー雲＝凍結バッファ/Hann LUT/ボイスプール、Random=マイクロ再抽選、`grain()` を baseWrite 引数化して共用）。params/UI/配線は不変（enum 0..8 のまま）。DSP §3（Freeze/Random/ラッチ記述）を更新。`vp check`(22)/`vp build` 通過。耳調整定数: FREEZE_GRAIN/REGION/VOICES/JITTER/GAIN。
+**学び**: freeze と stutter は「速度の連続」でなく**別アルゴリズム**（stutter=短スライスを見せる／freeze=境界を隠す＝多声ジッタ重ね合わせ）。隣接ブロックモデルで "Random" を活かすには**ブロック内サブステップ再抽選**が要る（幅=継続長と中身の変化を分離）。
+
+### 2026-06-21 — Freeze 定数を耳で確定 ＋ iceberg ハイパス追加
+
+DEBUG スライダ（Grain/Region/Gain を一時 param 化）で試聴し確定。
+
+調整は **DEBUG スライダ（Grain/Region/Gain/HP を一時 param 化）→耳で確定→定数へ焼き戻し・param 撤去** の手順で実施（commit には debug param を残さない）。
+
+- **範囲確定**（glitch.ts 定数化）: `FREEZE_GRAIN_MS=120` / `FREEZE_REGION_MS=730` / `FREEZE_GAIN=2.4`。overlap=8・VOICES=12・JITTER=50ms・窓和正規化は据置。
+- **iceberg ハイパス**: **Freeze の wet 出力にのみ** 2-pole(12dB/oct) TPT SVF ハイパス（Butterworth Q=1/√2）を通し低域カット＝氷的な質感に。`FREEZE_HP_HZ=310` 固定（係数は constructor で一度算出）。他タイプには非適用。立上りはブロック端フェードが過渡を覆う。
+
+**影響**: `dsp/glitch.ts`（FREEZE 定数確定・freezeHpProcess 追加）、`params.ts`（debug param なし＝据置）、`distortion.ts`・`App.vue` 実質変化なし。DSP §3 Freeze 更新。`vp check`(22)/`vp build` 通過。
+**学び**: グラニュラー freeze は**長グレインで滑らか・短グレインで質感**のトレードオフ（確定は短め120ms＋HP で iceberg 寄り）。固定 hop 由来の振幅周期は**窓和正規化**で消えるので GAIN 調整が素直になる。質感フィルタは**該当タイプの wet のみ**に閉じる（全体に漏らさない）。
+
 > パラメータの範囲・既定値は v0.3 提案。確定したらここに「範囲確定」として追記する。

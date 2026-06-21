@@ -170,7 +170,7 @@ data = lerp(buf[floor(w-delay)], next, frac)          // フラクショナル�
 
 横=**16分ステップ(1小節)** / 縦=タイプの択一パターンを、再生中の拍に当たるステップで適用。パターンがループ＝**再現性**。拍ロックは曲タイムライン（VST）/再生開始基準（Web）。タイプ enum: **0=Dry / 1=Glitch(極短ラチェット) / 2=Freeze / 3=Reverse / 4=Random / 5=Mute / 6=Repeat1/16 / 7=Repeat1/8 / 8=Repeat1/4**。
 
-**ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の継続長**（隣接で伸ばす＝追加操作なし）。`steps[]` 全16個が毎ブロック来るのでラン先頭で前方走査して `blockLen` を確定。ブロック頭で `blockStartWrite`(履歴位置)・grain・Random 抽選をラッチ。`blockPhase = localBarPos − blockStartPos`。
+**ブロック(隣接)モデル**: 同一 enum の連続セル＝1ブロック（小節頭で必ず分割）。**ブロック幅＝その効果の継続長**（隣接で伸ばす＝追加操作なし）。`steps[]` 全16個が毎ブロック来るのでラン先頭で前方走査して `blockLen` を確定。ブロック頭で `blockStartWrite`(履歴位置)・chunk・Freeze スナップをラッチ。`blockPhase = localBarPos − blockStartPos`。**Random だけはブロック内でもステップ毎にマイクロ抽選を再ラッチ**（幅=継続長は保ちつつ中身を毎step更新）。
 
 **拍同期（拍ロック＋サンプル精度＋ジッタ耐性）**:
 
@@ -194,9 +194,14 @@ stepIdx = floor(localBarPos / (samplesPerBar/16));  posInStep = localBarPos - st
 ```
 Dry:     fx = dry
 Glitch:  grain = 1/32音符の極短スライスをループ＝ラチェット/アーティファクト（chunk 固定）
-Freeze:  grain = FREEZE_GRAIN(≈70ms) をループ保持
+Freeze:  ブロック頭で直近 FREEZE_REGION(=730ms) を凍結バッファにスナップ→重なり合う窓化グレイン
+         (FREEZE_GRAIN=120ms・FREEZE_VOICES=12・overlap=8・読み位置±JITTER≈50ms) を Hann 窓で
+         重ね合わせ、**窓和で正規化**（包絡一定＝トレモロ/粒を抑制、立上り floor で増幅回避）→
+         GAIN(=2.4)→**2-pole HP(iceberg・310Hz 固定・Freeze の wet のみ)で低域カット**。
+         単一ループのコム/周期が無い滑らかな持続音（≠スタッター）
 Reverse: hist[blockStartWrite − blockPhase]（revLen=ブロック幅）＝直前ブロック幅を逆再生
-Random:  rand01(blockIdx) で stutter(極短 grain ループ) / gate を選択（シード＝決定論）
+Random:  ステップ毎に seed=絶対step で microKind∈{0 ラチェット / 1 逆 / 2 ハーフ} を再抽選
+         ＝幅広でも毎1/16でマイクロ効果が変化（≠均一ループの Repeat）。決定論で再現性維持
 Mute:    gate（中央=無音・両端 FADE）。Spectral Fill(212) ON で (-1)^n スペクトル反転を差し込む
 Repeat1/16・1/8・1/4: chunk=分割(1/2/4×stepLen) を継続長ぶんループ。chunk<幅 で連続ループ
 ```
